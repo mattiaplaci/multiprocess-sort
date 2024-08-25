@@ -37,4 +37,8 @@ for seq in os.listdir(path):
 
         results = model(image)
 
-        detections = results[0].boxes.data.cpu().numpy()
+        detections = results[0].boxes.data.numpy()
+
+        detections = detections[np.where(detections[:,5] == 0)]
+
+        detections = detections[:,:5]
