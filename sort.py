@@ -18,3 +18,23 @@ def show_video(seq_name,fps):
         cv2.waitKey(int(1000/fps))
 
     cv2.destroyAllWindows()
+
+# Carico YOLOv8 preaddestrato
+model = YOLO('yolov8n.pt')
+
+path = os.path.dirname('data/train/')
+
+for seq in os.listdir(path):
+
+    seq_path = os.path.join(path,seq,'img1')
+
+    image_files = [f for f in os.listdir(seq_path)]
+    image_files.sort()
+
+    for image_file in image_files:
+
+        image = io.imread(os.path.join(seq_path,image_file))
+
+        results = model(image)
+
+        detections = results[0].boxes.data.cpu().numpy()
