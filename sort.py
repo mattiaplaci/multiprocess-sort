@@ -19,26 +19,32 @@ def show_video(seq_name,fps):
 
     cv2.destroyAllWindows()
 
-# Carico YOLOv8 preaddestrato
+# Pretrained YOLOv8 model
 model = YOLO('yolov8n.pt')
 
 path = os.path.dirname('data/train/')
 
+# Cicle through the train sequences
 for seq in os.listdir(path):
 
     seq_path = os.path.join(path,seq,'img1')
 
+    # Frame list
     image_files = [f for f in os.listdir(seq_path)]
     image_files.sort()
 
+    # Cicle through sequence's frames
     for image_file in image_files:
 
         image = io.imread(os.path.join(seq_path,image_file))
 
+        # Detect on a single frame
         results = model(image)
 
         detections = results[0].boxes.data.numpy()
 
+        # Discard detections different from pedestrians
         detections = detections[np.where(detections[:,5] == 0)]
 
+        # Delete class_id column
         detections = detections[:,:5]
