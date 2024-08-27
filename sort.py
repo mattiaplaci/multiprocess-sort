@@ -113,8 +113,9 @@ class KalmanBoxTracker:
         pass
 
     def get_state(self):
-        pass
 
+        return self.kf.x
+    
 
 # Pretrained YOLOv8 model
 model = YOLO('yolov8n.pt')
