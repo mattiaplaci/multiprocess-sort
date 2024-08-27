@@ -68,6 +68,32 @@ def convert_xysr_to_xyxy(boxes):
     return boxes
 
 
+def iou_matrix(boxes1,boxes2):
+    
+    # For broadcasting
+    boxes1 = np.expand_dims(boxes1,1)
+    boxes2 = np.expand_dims(boxes2,0)
+
+    # Intersection bounding boxes
+    inter_x1 = np.maximum(boxes1[...,0],boxes2[...,0])
+    inter_y1 = np.maximum(boxes1[...,1],boxes2[...,1])
+    inter_x2 = np.minimum(boxes1[...,2],boxes2[...,2])
+    inter_y2 = np.minimum(boxes1[...,3],boxes2[...,3])
+
+    # Intersection areas
+    intersection = np.maximum(0,inter_x2-inter_x1) * np.maximum(0,inter_y2-inter_y1)
+
+    # Bounding boxes areas
+    area1 = (boxes1[...,2] - boxes1[...,0]) * (boxes1[...,3] - boxes1[...,1])
+    area2 = (boxes2[...,2] - boxes2[...,0]) * (boxes2[...,3] - boxes2[...,1])
+
+    # Union areas
+    union = area1 + area2 - intersection
+
+    # IOU matrix
+    return intersection / union
+
+
 class KalmanBoxTracker:
 
     count = 0
@@ -145,8 +171,8 @@ for seq in os.listdir(path):
         # Discard detections different from pedestrians
         detections = detections[np.where(detections[:,5] == 0)]
 
-        # Delete class_id column
-        detections = detections[:,:5]
+        # Discard detections with score less then 50%
+        detections = detections[np.where(detections[:,4] >= 0.5)]
 
-        print(detections)
-        break
+        # Delete class_id and score columns
+        detections = detections[:,:4]
