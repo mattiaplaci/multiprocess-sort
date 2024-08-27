@@ -5,6 +5,9 @@ from skimage import io
 
 from ultralytics import YOLO
 
+from filterpy.kalman import KalmanFilter
+
+
 def show_video(seq_name,fps):
 
     path = os.path.join('data/train',seq_name,'img1')
@@ -65,6 +68,54 @@ def convert_xysr_to_xyxy(boxes):
     return boxes
 
 
+class KalmanBoxTracker:
+
+    count = 0
+
+    def __init__(self,box):
+
+        self.kf = KalmanFilter(dim_x=7,dim_z=4)
+
+        # Costant velocity model:
+        # state transiction matrix F
+        self.kf.F = np.array([ [1,0,0,0,1,0,0],
+                               [0,1,0,0,0,1,0],
+                               [0,0,1,0,0,0,1],
+                               [0,0,0,1,0,0,0],
+                               [0,0,0,0,1,0,0],
+                               [0,0,0,0,0,1,0],
+                               [0,0,0,0,0,0,1] ])
+        # measurement matrix H
+        self.kf.H = np.array([ [1,0,0,0,0,0,0],
+                               [0,1,0,0,0,0,0],
+                               [0,0,1,0,0,0,0],
+                               [0,0,0,1,0,0,0] ])
+        # initial state
+        self.kf.x = box
+        # state covariance matrix P
+        self.kf.P *= 10
+        self.kf.P[4:,4:] *= 1000
+        # process noise matrix Q
+        self.kf.Q[4:,4:] *= 0.01
+        self.kf.Q[-1,-1] *= 0.01
+        # measurement noise matrix R
+        self.kf.R[2:,2:] *= 10
+
+        self.id = KalmanBoxTracker.count
+
+        KalmanBoxTracker.count += 1
+
+
+    def predict(self):
+        pass
+
+    def update(self):
+        pass
+
+    def get_state(self):
+        pass
+
+
 # Pretrained YOLOv8 model
 model = YOLO('yolov8n.pt')
 
@@ -95,3 +146,6 @@ for seq in os.listdir(path):
 
         # Delete class_id column
         detections = detections[:,:5]
+
+        print(detections)
+        break
