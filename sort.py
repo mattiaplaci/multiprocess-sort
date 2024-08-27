@@ -7,6 +7,8 @@ from ultralytics import YOLO
 
 from filterpy.kalman import KalmanFilter
 
+import lap
+
 
 def show_video(seq_name,fps):
 
