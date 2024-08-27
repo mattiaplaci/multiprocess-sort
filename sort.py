@@ -8,6 +8,7 @@ from ultralytics import YOLO
 from filterpy.kalman import KalmanFilter
 
 import lap
+from scipy.optimize import linear_sum_assignment
 
 
 def show_video(seq_name,fps):
@@ -70,7 +71,7 @@ def convert_xysr_to_xyxy(boxes):
     return boxes
 
 
-def iou_matrix(boxes1,boxes2):
+def calculate_iou_matrix(boxes1,boxes2):
     
     # For broadcasting
     boxes1 = np.expand_dims(boxes1,1)
@@ -144,6 +145,37 @@ class KalmanBoxTracker:
 
         return self.kf.x
     
+
+def associate_detections_to_trackers(detections,trackers,iou_threshold=0.3):
+    
+    if len(trackers) == 0:
+        return np.empty((0,2),dtype=int), detections, np.empty((0,4))
+    
+    iou_matrix = calculate_iou_matrix(detections,trackers)
+
+    if min(iou_matrix.shape) > 0:
+        row, col = linear_sum_assignment(iou_matrix,maximize=True)
+        matched_indices = np.array(list(zip(row,col)))
+
+    else:
+        matched_indices = np.empty((0,2),dtype=int)
+
+    det_mask = [False if i in matched_indices[:,0] else True for i in range(len(detections))]
+    unmatched_detections = detections[det_mask]
+    
+    trk_mask = [False if j in matched_indices[:,1] else True for j in range(len(trackers))]
+    unmatched_trackers = trackers[trk_mask]
+
+    match_mask = [True if iou_matrix[row[0],row[1]] >= iou_threshold else False for row in matched_indices]
+    not_match_mask = [not x for x in match_mask]
+    unmatched_indices = matched_indices[not_match_mask]
+    matched_indices = matched_indices[match_mask]
+
+    unmatched_detections = np.concatenate((unmatched_detections,detections[unmatched_indices[:,0]]))
+    unmatched_trackers = np.concatenate((unmatched_trackers,trackers[unmatched_indices[:,1]]))
+    
+    return matched_indices, unmatched_detections, unmatched_trackers
+
 
 # Pretrained YOLOv8 model
 model = YOLO('yolov8n.pt')
