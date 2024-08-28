@@ -145,6 +145,9 @@ class KalmanBoxTracker:
     def get_state(self):
         return self.kf.x
     
+    def get_box(self):
+        return convert_xysr_to_xyxy(self.kf.x)
+    
 
 
 def calculate_iou_matrix(boxes1,boxes2):
@@ -173,14 +176,14 @@ def calculate_iou_matrix(boxes1,boxes2):
     return intersection / union
 
 
-def associate_detections_to_trackers(detections,trackers,iou_threshold=0.3):
+def associate_detections_to_trackers(detections,trackers,iou_threshold):
     
     # Empty tracker list
     if len(trackers) == 0:
-        return np.empty((0,2),dtype=int), detections, np.empty((0,4))
+        return np.empty((0,2),dtype=int), detections, np.empty((0,5))
     
     # IOU matrix
-    iou_matrix = calculate_iou_matrix(detections,trackers)
+    iou_matrix = calculate_iou_matrix(detections,trackers[:,:4])
 
     # Assignment problem solution
     if min(iou_matrix.shape) > 0:
@@ -227,7 +230,33 @@ def associate_detections_to_trackers(detections,trackers,iou_threshold=0.3):
     return matched_indices, unmatched_detections, unmatched_trackers
 
 
+class SORT:
+
+    def __init__(self, max_age=1, min_hits=3, iou_threshold=0.3):
+
+        self.trackers = []
+        
+        self.max_age = max_age
+        self.min_hits = min_hits
+        self.iou_threshold = iou_threshold
+
+    def update(self):
+        pass
+
+    def reset(self):
+        self.trackers = []
+
+    def get_trackers_boxes(self):
+        trackers_boxes = []
+        for trk in self.trackers:
+            trackers_boxes.append(trk.get_box())
+        return np.array(trackers_boxes)
+
+
+
 detector = YOLOv8Detector()
+
+tracker = SORT()
 
 path = os.path.dirname('data/train/')
 
@@ -240,9 +269,16 @@ for seq in os.listdir(path):
     image_files = [f for f in os.listdir(seq_path)]
     image_files.sort()
 
+    # Outputs list
+    outputs = []
+
     # Cicle through sequence's frames
     for image in image_files:
 
         frame = io.imread(os.path.join(seq_path,image))
 
         detections = detector.get_detections(frame)
+
+        output = tracker.update(detections)
+
+        outputs.append(output)
