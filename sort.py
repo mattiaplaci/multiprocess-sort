@@ -2,6 +2,7 @@ import os
 import cv2
 import numpy as np
 from skimage import io
+import configparser
 
 from ultralytics import YOLO
 
@@ -9,21 +10,6 @@ from filterpy.kalman import KalmanFilter
 
 import lap
 from scipy.optimize import linear_sum_assignment
-
-
-def show_video(seq_name,fps):
-
-    path = os.path.join('data/train',seq_name,'img1')
-
-    image_files = [f for f in os.listdir(path)]
-    image_files.sort()
-
-    for frame in image_files:
-        frame = io.imread(os.path.join(path,frame))
-        cv2.imshow(seq_name,cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
-        cv2.waitKey(int(1000/fps))
-
-    cv2.destroyAllWindows()
 
 
 class YOLOv8Detector:
@@ -289,7 +275,7 @@ class SORT:
         # Build outputs
         output = []
         for trk in self.trackers:
-            if trk.hit_streak >= self.min_hits or self.frame_count < self.min_hits:
+            if trk.hit_streak >= self.min_hits or self.frame_count <= self.min_hits+150:
                 box = trk.get_box()
                 row = np.concatenate(([trk.id],box)).reshape((1,5))
                 output.append(row)
@@ -306,6 +292,7 @@ class SORT:
         self.frame_count = 0
 
 
+display = True
 
 detector = YOLOv8Detector()
 
@@ -317,6 +304,11 @@ path = os.path.dirname('data/train/')
 for seq in os.listdir(path):
 
     seq_path = os.path.join(path,seq,'img1')
+
+    # Get sequence framerate
+    config = configparser.ConfigParser()
+    config.read(os.path.join(path,seq,'seqinfo.ini'))
+    framerate = config.getint('Sequence', 'frameRate')
 
     # Frames list
     image_files = [f for f in os.listdir(seq_path)]
@@ -334,8 +326,20 @@ for seq in os.listdir(path):
 
         output = tracker.update(detections)
 
+        print(output)
+
+        if display:
+            for o in output:
+                id, x1, y1, x2, y2 = int(o[0]), int(o[1]), int(o[2]), int(o[3]), int(o[4])
+                cv2.rectangle(frame, (x1,y1), (x2,y2), (255,0,0), 2)
+                cv2.putText(frame, f'ID: {id}', (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 2)
+
+            cv2.imshow(seq,cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+            cv2.waitKey(int(1000/framerate))
+
         outputs = np.concatenate((outputs,output))
 
-    print(outputs)
-
     tracker.reset()
+
+    if display:
+        cv2.destroyAllWindows()
