@@ -275,7 +275,7 @@ class SORT:
         # Build outputs
         output = []
         for trk in self.trackers:
-            if trk.hit_streak >= self.min_hits or self.frame_count <= self.min_hits+150:
+            if trk.hit_streak >= self.min_hits or self.frame_count < self.min_hits:
                 box = trk.get_box()
                 row = np.concatenate(([trk.id],box)).reshape((1,5))
                 output.append(row)
@@ -325,8 +325,6 @@ for seq in os.listdir(path):
         detections = detector.get_detections(frame)
 
         output = tracker.update(detections)
-
-        print(output)
 
         if display:
             for o in output:
