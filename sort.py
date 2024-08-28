@@ -148,29 +148,52 @@ class KalmanBoxTracker:
 
 def associate_detections_to_trackers(detections,trackers,iou_threshold=0.3):
     
+    # Empty tracker list
     if len(trackers) == 0:
         return np.empty((0,2),dtype=int), detections, np.empty((0,4))
     
+    # IOU matrix
     iou_matrix = calculate_iou_matrix(detections,trackers)
 
+    # Assignment problem solution
     if min(iou_matrix.shape) > 0:
         row, col = linear_sum_assignment(iou_matrix,maximize=True)
         matched_indices = np.array(list(zip(row,col)))
-
     else:
         matched_indices = np.empty((0,2),dtype=int)
 
-    det_mask = [False if i in matched_indices[:,0] else True for i in range(len(detections))]
+    # Unmatched detections
+    det_mask = []
+    for i in range(len(detections)):
+        if i in matched_indices[:,0]:
+            det_mask.append(False)
+        else:
+            det_mask.append(True)
     unmatched_detections = detections[det_mask]
     
-    trk_mask = [False if j in matched_indices[:,1] else True for j in range(len(trackers))]
+    # Unmatched trackers
+    trk_mask = []
+    for j in range(len(trackers)):
+        if j in matched_indices[:,1]:
+            trk_mask.append(False)
+        else:
+            trk_mask.append(True)
     unmatched_trackers = trackers[trk_mask]
 
-    match_mask = [True if iou_matrix[row[0],row[1]] >= iou_threshold else False for row in matched_indices]
+    # Filter out matches with iou under threshold
+    match_mask = []
+    for indices in matched_indices:
+        row = indices[0]
+        col = indices[1]
+        if iou_matrix[row,col] >= iou_threshold:
+            match_mask.append(True)
+        else:
+            match_mask.append(False)
     not_match_mask = [not x for x in match_mask]
     unmatched_indices = matched_indices[not_match_mask]
     matched_indices = matched_indices[match_mask]
 
+    # Add filtered out matches to unmatched lists
     unmatched_detections = np.concatenate((unmatched_detections,detections[unmatched_indices[:,0]]))
     unmatched_trackers = np.concatenate((unmatched_trackers,trackers[unmatched_indices[:,1]]))
     
