@@ -55,48 +55,50 @@ class YOLOv8Detector:
 
 
 # Converts format [x1,y1,x2,y2] to [x,y,s,r]
-def convert_xyxy_to_xysr(boxes):
-    
-    w = boxes[:,2] - boxes[:,0]
-    h = boxes[:,3] - boxes[:,1]
+def convert_xyxy_to_xysr(box):
+
+    w = box[2] - box[0]
+    h = box[3] - box[1]
 
     # Ratio
     r = w / h
     # Scale (area)
     s = w * h
     # Center x coordinate
-    x = boxes[:,0] + w/2
+    x = box[0] + w/2
     # Center y coordinate
-    y = boxes[:,1] + h/2
+    y = box[1] + h/2
 
-    boxes[:,0] = x
-    boxes[:,1] = y
-    boxes[:,2] = s
-    boxes[:,3] = r
+    box[0] = x
+    box[1] = y
+    box[2] = s
+    box[3] = r
 
-    return boxes
+    return box.reshape((4,1))
 
 # Converts format [x,y,s,r] to [x1,y1,x2,y2]
-def convert_xysr_to_xyxy(boxes):
+def convert_xysr_to_xyxy(box):
 
-    w = np.sqrt(boxes[:,2] * boxes[:,3])
-    h = w / boxes[:,3]
+    box = np.reshape(box,(4,))
+
+    w = np.sqrt(box[2] * box[3])
+    h = w / box[3]
 
     # Top-left x coordinate
-    x1 = boxes[:,0] - w/2
+    x1 = box[0] - w/2
     # Top-left y coordinate
-    y1 = boxes[:,1] - h/2
+    y1 = box[1] - h/2
     # Bottom-right x coordinate
-    x2 = boxes[:,0] + w/2
+    x2 = box[0] + w/2
     # Bottom-right y coordinate
-    y2 = boxes[:,1] + h/2
+    y2 = box[1] + h/2
 
-    boxes[:,0] = x1
-    boxes[:,1] = y1
-    boxes[:,2] = x2
-    boxes[:,3] = y2
+    box[0] = x1
+    box[1] = y1
+    box[2] = x2
+    box[3] = y2
 
-    return boxes
+    return box
 
 
 class KalmanBoxTracker:
@@ -122,7 +124,7 @@ class KalmanBoxTracker:
                                [0,0,1,0,0,0,0],
                                [0,0,0,1,0,0,0] ])
         # initial state
-        self.kf.x = box
+        self.kf.x[:4] = convert_xyxy_to_xysr(box)
         # state covariance matrix P
         self.kf.P *= 10
         self.kf.P[4:,4:] *= 1000
@@ -133,22 +135,35 @@ class KalmanBoxTracker:
         self.kf.R[2:,2:] *= 10
 
         self.id = KalmanBoxTracker.count
+        self.time_since_update = 0
+        self.hit_streak = 0
 
         KalmanBoxTracker.count += 1
 
     def predict(self):
-        pass
+        
+        self.kf.predict()
 
-    def update(self):
-        pass
+        if self.time_since_update > 0:
+            self.hit_streak = 0
+        self.time_since_update += 1
+
+        return self.get_box()
+
+    def update(self,det):
+        
+        det = np.reshape(det,(4,))
+        self.kf.update(convert_xyxy_to_xysr(det))
+
+        self.time_since_update = 0
+        self.hit_streak += 1
 
     def get_state(self):
         return self.kf.x
     
     def get_box(self):
-        return convert_xysr_to_xyxy(self.kf.x)
+        return convert_xysr_to_xyxy(self.kf.x[:4])
     
-
 
 def calculate_iou_matrix(boxes1,boxes2):
     
@@ -180,39 +195,35 @@ def associate_detections_to_trackers(detections,trackers,iou_threshold):
     
     # Empty tracker list
     if len(trackers) == 0:
-        return np.empty((0,2),dtype=int), detections, np.empty((0,5))
+        return np.empty((0,2),dtype=int), np.arange(len(detections)), np.empty((0,1),dtype=int)
     
     # IOU matrix
-    iou_matrix = calculate_iou_matrix(detections,trackers[:,:4])
+    iou_matrix = calculate_iou_matrix(detections,trackers)
 
     # Assignment problem solution
     if min(iou_matrix.shape) > 0:
         row, col = linear_sum_assignment(iou_matrix,maximize=True)
-        matched_indices = np.array(list(zip(row,col)))
+        matched = np.array(list(zip(row,col)),dtype=int)
     else:
-        matched_indices = np.empty((0,2),dtype=int)
-
+        matched = np.empty((0,2),dtype=int)
+    
     # Unmatched detections
-    det_mask = []
+    unmatched_detections = []
     for i in range(len(detections)):
-        if i in matched_indices[:,0]:
-            det_mask.append(False)
-        else:
-            det_mask.append(True)
-    unmatched_detections = detections[det_mask]
+        if i not in matched[:,0]:
+            unmatched_detections.append(i)
+    unmatched_detections = np.array(unmatched_detections,dtype=int)
     
     # Unmatched trackers
-    trk_mask = []
+    unmatched_trackers = []
     for j in range(len(trackers)):
-        if j in matched_indices[:,1]:
-            trk_mask.append(False)
-        else:
-            trk_mask.append(True)
-    unmatched_trackers = trackers[trk_mask]
+        if j not in matched[:,1]:
+            unmatched_trackers.append(j)
+    unmatched_trackers = np.array(unmatched_trackers,dtype=int)
 
     # Filter out matches with iou under threshold
     match_mask = []
-    for indices in matched_indices:
+    for indices in matched:
         row = indices[0]
         col = indices[1]
         if iou_matrix[row,col] >= iou_threshold:
@@ -220,14 +231,14 @@ def associate_detections_to_trackers(detections,trackers,iou_threshold):
         else:
             match_mask.append(False)
     not_match_mask = [not x for x in match_mask]
-    unmatched_indices = matched_indices[not_match_mask]
-    matched_indices = matched_indices[match_mask]
-
-    # Add filtered out matches to unmatched lists
-    unmatched_detections = np.concatenate((unmatched_detections,detections[unmatched_indices[:,0]]))
-    unmatched_trackers = np.concatenate((unmatched_trackers,trackers[unmatched_indices[:,1]]))
+    unmatched = matched[not_match_mask]
+    matched = matched[match_mask]
     
-    return matched_indices, unmatched_detections, unmatched_trackers
+    # Add filtered out matches to unmatched lists
+    unmatched_detections = np.concatenate((unmatched_detections,unmatched[:,0]),dtype=int)
+    unmatched_trackers = np.concatenate((unmatched_trackers,unmatched[:,1]),dtype=int)
+    
+    return matched, unmatched_detections, unmatched_trackers
 
 
 class SORT:
@@ -236,21 +247,63 @@ class SORT:
 
         self.trackers = []
         
+        # Tracker parameters
         self.max_age = max_age
         self.min_hits = min_hits
         self.iou_threshold = iou_threshold
 
-    def update(self):
-        pass
+        self.frame_count = 0
 
+    def update(self,detections):
+
+        self.frame_count += 1
+        
+        # Predict new positions through trackers from previous frame
+        predicted_boxes = []
+        if len(self.trackers) > 0:
+            for trk in self.trackers:
+                predicted_box = trk.predict()
+                predicted_boxes.append(predicted_box)
+            predicted_boxes = np.array(predicted_boxes)
+        else:
+            predicted_boxes = np.empty((0,4))
+
+        # Detections associations to trackers
+        matched, unmatched_detections, unmatched_trackers = associate_detections_to_trackers(
+            detections,predicted_boxes,self.iou_threshold)
+
+        # Update matched trackers
+        for t,trk in enumerate(self.trackers):
+            if t not in unmatched_trackers:
+                det_index = matched[np.where(matched[:,1] == t)[0],0]
+                trk.update(detections[det_index])
+        
+        # New trackers for unmatched detections
+        for d in unmatched_detections:
+            new_tracker = KalmanBoxTracker(detections[d])
+            self.trackers.append(new_tracker)
+
+        # Filter out old trackers
+        self.trackers = [trk for trk in self.trackers if trk.time_since_update < self.max_age]
+
+        # Build outputs
+        output = []
+        for trk in self.trackers:
+            if trk.hit_streak >= self.min_hits or self.frame_count < self.min_hits:
+                box = trk.get_box()
+                row = np.concatenate(([trk.id],box)).reshape((1,5))
+                output.append(row)
+        
+        if len(output) > 0:
+            return np.concatenate(output)
+        else:
+            return np.empty((0,5))
+               
+
+    # Reset tracker status for new sequences
     def reset(self):
         self.trackers = []
-
-    def get_trackers_boxes(self):
-        trackers_boxes = []
-        for trk in self.trackers:
-            trackers_boxes.append(trk.get_box())
-        return np.array(trackers_boxes)
+        self.frame_count = 0
 
 
 
@@ -270,7 +323,7 @@ for seq in os.listdir(path):
     image_files.sort()
 
     # Outputs list
-    outputs = []
+    outputs = np.empty((0,5))
 
     # Cicle through sequence's frames
     for image in image_files:
@@ -281,4 +334,8 @@ for seq in os.listdir(path):
 
         output = tracker.update(detections)
 
-        outputs.append(output)
+        outputs = np.concatenate((outputs,output))
+
+    print(outputs)
+
+    tracker.reset()
