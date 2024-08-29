@@ -129,6 +129,9 @@ class KalmanBoxTracker:
 
     def predict(self):
 
+        if((self.kf.x[6]+self.kf.x[2])<=0):
+            self.kf.x[6] *= 0.0
+
         self.kf.predict()
 
         if self.time_since_update > 0:
@@ -289,7 +292,7 @@ class SORT:
                 box = trk.get_box()
                 row = np.concatenate(([trk.get_id()],box)).reshape((1,5))
                 output.append(row)
-        
+
         if len(output) > 0:
             return np.concatenate(output)
         else:
@@ -319,9 +322,10 @@ for seq in os.listdir(path):
 
     seq_path = os.path.join(path,seq,'img1')
 
-    # Get sequence framerate and images sizes
+    # Get sequence info
     config = configparser.ConfigParser()
     config.read(os.path.join(path,seq,'seqinfo.ini'))
+    seq_name = config.get('Sequence','name')
     framerate = config.getint('Sequence', 'frameRate')
     width = config.getint('Sequence','imWidth')
     height = config.getint('Sequence','imHeight')
