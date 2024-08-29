@@ -9,7 +9,6 @@ from ultralytics import YOLO
 
 from filterpy.kalman import KalmanFilter
 
-import lap
 from scipy.optimize import linear_sum_assignment
 
 
@@ -64,8 +63,9 @@ def convert_xyxy_to_xysr(box):
     return box.reshape((4,1))
 
 # Converts format [x,y,s,r] to [x1,y1,x2,y2]
-def convert_xysr_to_xyxy(box):
+def convert_xysr_to_xyxy(state_box):
 
+    box = np.copy(state_box)
     box = np.reshape(box,(4,))
 
     w = np.sqrt(box[2] * box[3])
@@ -129,9 +129,6 @@ class KalmanBoxTracker:
 
     def predict(self):
 
-        if (self.kf.x[6]+self.kf.x[2]) <= 0:
-            self.kf.x[6] *= 0.0
-        
         self.kf.predict()
 
         if self.time_since_update > 0:
@@ -141,9 +138,9 @@ class KalmanBoxTracker:
         return self.get_box()
 
     def update(self,det):
-        
-        det = np.reshape(det,(4,))
-        self.kf.update(convert_xyxy_to_xysr(det))
+
+        box = convert_xyxy_to_xysr(det)
+        self.kf.update(box)
 
         self.time_since_update = 0
         self.hit_streak += 1
@@ -153,6 +150,15 @@ class KalmanBoxTracker:
     
     def get_box(self):
         return convert_xysr_to_xyxy(self.kf.x[:4])
+    
+    def get_id(self):
+        return self.id
+    
+    def get_hit_streak(self):
+        return self.hit_streak
+    
+    def get_time_since_update(self):
+        return self.time_since_update
     
 
 def calculate_iou_matrix(boxes1,boxes2):
@@ -254,7 +260,7 @@ class SORT:
             for trk in self.trackers:
                 predicted_box = trk.predict()
                 predicted_boxes.append(predicted_box)
-            predicted_boxes = np.concatenate(predicted_boxes)
+            predicted_boxes = np.array(predicted_boxes)
         else:
             predicted_boxes = np.empty((0,4))
 
@@ -265,23 +271,23 @@ class SORT:
         # Update matched trackers
         for t,trk in enumerate(self.trackers):
             if t not in unmatched_trackers:
-                det_index = matched[np.where(matched[:,1] == t)[0],0]
+                det_index = matched[np.where(matched[:,1] == t)[0][0],0]
                 trk.update(detections[det_index])
-        
+
         # New trackers for unmatched detections
         for d in unmatched_detections:
             new_tracker = KalmanBoxTracker(detections[d])
             self.trackers.append(new_tracker)
 
         # Filter out old trackers
-        self.trackers = [trk for trk in self.trackers if trk.time_since_update < self.max_age]
+        self.trackers = [trk for trk in self.trackers if trk.get_time_since_update() < self.max_age]
 
         # Build outputs
         output = []
         for trk in self.trackers:
-            if trk.hit_streak >= self.min_hits or self.frame_count < self.min_hits:
+            if trk.get_hit_streak() >= self.min_hits or self.frame_count < self.min_hits:
                 box = trk.get_box()
-                row = np.concatenate(([trk.id],box)).reshape((1,5))
+                row = np.concatenate(([trk.get_id()],box)).reshape((1,5))
                 output.append(row)
         
         if len(output) > 0:
@@ -304,7 +310,7 @@ screen_ratio = screen_width/screen_height
 
 detector = YOLOv8Detector()
 
-tracker = SORT()
+mot_tracker = SORT()
 
 path = os.path.dirname('data/train/')
 
@@ -313,7 +319,7 @@ for seq in os.listdir(path):
 
     seq_path = os.path.join(path,seq,'img1')
 
-    # Get sequence framerate
+    # Get sequence framerate and images sizes
     config = configparser.ConfigParser()
     config.read(os.path.join(path,seq,'seqinfo.ini'))
     framerate = config.getint('Sequence', 'frameRate')
@@ -335,7 +341,7 @@ for seq in os.listdir(path):
 
         detections = detector.get_detections(frame)
 
-        output = tracker.update(detections)
+        output = mot_tracker.update(detections)
 
         if display:
             for o in output:
@@ -356,7 +362,7 @@ for seq in os.listdir(path):
 
         outputs = np.concatenate((outputs,output))
 
-    tracker.reset()
+    mot_tracker.reset()
     KalmanBoxTracker.count = 0
 
     if display:
