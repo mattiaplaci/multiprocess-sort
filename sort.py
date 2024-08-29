@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 from skimage import io
 import configparser
+import tkinter
 
 from ultralytics import YOLO
 
@@ -127,6 +128,9 @@ class KalmanBoxTracker:
         KalmanBoxTracker.count += 1
 
     def predict(self):
+
+        if (self.kf.x[6]+self.kf.x[2]) <= 0:
+            self.kf.x[6] *= 0.0
         
         self.kf.predict()
 
@@ -250,7 +254,7 @@ class SORT:
             for trk in self.trackers:
                 predicted_box = trk.predict()
                 predicted_boxes.append(predicted_box)
-            predicted_boxes = np.array(predicted_boxes)
+            predicted_boxes = np.concatenate(predicted_boxes)
         else:
             predicted_boxes = np.empty((0,4))
 
@@ -294,6 +298,10 @@ class SORT:
 
 display = True
 
+tk = tkinter.Tk()
+screen_width, screen_height = tk.winfo_screenwidth(), tk.winfo_screenheight()
+screen_ratio = screen_width/screen_height
+
 detector = YOLOv8Detector()
 
 tracker = SORT()
@@ -309,6 +317,9 @@ for seq in os.listdir(path):
     config = configparser.ConfigParser()
     config.read(os.path.join(path,seq,'seqinfo.ini'))
     framerate = config.getint('Sequence', 'frameRate')
+    width = config.getint('Sequence','imWidth')
+    height = config.getint('Sequence','imHeight')
+    ratio = width/height
 
     # Frames list
     image_files = [f for f in os.listdir(seq_path)]
@@ -332,12 +343,21 @@ for seq in os.listdir(path):
                 cv2.rectangle(frame, (x1,y1), (x2,y2), (255,0,0), 2)
                 cv2.putText(frame, f'ID: {id}', (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 2)
 
+            if width > screen_width or height > screen_height:
+                if ratio > screen_ratio:
+                    frame = cv2.resize(frame,(screen_width,int(screen_width/ratio)))
+                elif ratio < screen_ratio:
+                    frame = cv2.resize(frame,(int(screen_height*ratio),screen_height))
+                else:
+                    frame = cv2.resize(frame,(screen_width,screen_height))
+
             cv2.imshow(seq,cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
             cv2.waitKey(int(1000/framerate))
 
         outputs = np.concatenate((outputs,output))
 
     tracker.reset()
+    KalmanBoxTracker.count = 0
 
     if display:
         cv2.destroyAllWindows()
