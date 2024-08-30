@@ -1,7 +1,6 @@
 import os
 import cv2
 import numpy as np
-from skimage import io
 import configparser
 import tkinter
 import torch
@@ -135,6 +134,8 @@ class KalmanBoxTracker:
         self.id = KalmanBoxTracker.count
         self.time_since_update = 0
         self.hit_streak = 0
+
+        trackers_color[self.id] = (np.random.randint(0,256),np.random.randint(0,256),np.random.randint(0,256))
 
         KalmanBoxTracker.count += 1
 
@@ -323,6 +324,8 @@ tk = tkinter.Tk()
 screen_width, screen_height = tk.winfo_screenwidth(), tk.winfo_screenheight()
 screen_ratio = screen_width/screen_height
 
+trackers_color = {}
+
 detector = YOLOv8Detector()
 
 mot_tracker = SORT()
@@ -361,12 +364,13 @@ for seq in os.listdir(path):
 
         if display:
 
-            frame = io.imread(image_path)
+            frame = cv2.imread(image_path)
 
             for o in output:
                 id, x1, y1, x2, y2 = int(o[0]), int(o[1]), int(o[2]), int(o[3]), int(o[4])
-                cv2.rectangle(frame, (x1,y1), (x2,y2), (255,0,0), 2)
-                cv2.putText(frame, f'ID: {id}', (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 2)
+                color = trackers_color[id]
+                cv2.rectangle(frame, (x1,y1), (x2,y2), color, 2)
+                cv2.putText(frame, f'ID: {id}', (x1, y1-5), cv2.FONT_ITALIC, 0.7, color, 2)
 
             if width > screen_width or height > screen_height:
                 if ratio > screen_ratio:
@@ -376,7 +380,7 @@ for seq in os.listdir(path):
                 else:
                     frame = cv2.resize(frame,(screen_width,screen_height))
 
-            cv2.imshow(seq,cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+            cv2.imshow(seq,frame)
             cv2.waitKey(int(1000/framerate))
 
         outputs = np.concatenate((outputs,output))
