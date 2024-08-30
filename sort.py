@@ -4,6 +4,7 @@ import numpy as np
 import configparser
 import tkinter
 import torch
+import sys
 
 from ultralytics import YOLO
 
@@ -325,8 +326,12 @@ class SORT:
 
 
 # Script arguments
-display = True
+display = False
 use_gpu = False
+if '--display' in sys.argv:
+    display = True
+if '--use_gpu' in sys.argv:
+    use_gpu = True
 
 # Screen info
 tk = tkinter.Tk()
