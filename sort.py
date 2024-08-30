@@ -223,40 +223,38 @@ def associate_detections_to_trackers(detections,trackers,iou_threshold):
     # Assignment problem solution
     if min(iou_matrix.shape) > 0:
         row, col = linear_sum_assignment(iou_matrix,maximize=True)
-        matched = np.array(list(zip(row,col)),dtype=int)
+        matched_indices = np.array(list(zip(row,col)),dtype=int)
     else:
-        matched = np.empty((0,2),dtype=int)
+        matched_indices = np.empty((0,2),dtype=int)
     
     # Unmatched detections
     unmatched_detections = []
     for i in range(len(detections)):
-        if i not in matched[:,0]:
+        if i not in matched_indices[:,0]:
             unmatched_detections.append(i)
     unmatched_detections = np.array(unmatched_detections,dtype=int)
     
     # Unmatched trackers
     unmatched_trackers = []
     for j in range(len(trackers)):
-        if j not in matched[:,1]:
+        if j not in matched_indices[:,1]:
             unmatched_trackers.append(j)
     unmatched_trackers = np.array(unmatched_trackers,dtype=int)
 
     # Filter out matches with iou under threshold
-    match_mask = []
-    for indices in matched:
+    matched = np.empty((0,2),dtype=int)
+    unmatched = np.empty((0,2),dtype=int)
+    for indices in matched_indices:
         row = indices[0]
         col = indices[1]
         if iou_matrix[row,col] >= iou_threshold:
-            match_mask.append(True)
+            matched = np.concatenate((matched,indices.reshape((1,2))))
         else:
-            match_mask.append(False)
-    not_match_mask = [not x for x in match_mask]
-    unmatched = matched[not_match_mask]
-    matched = matched[match_mask]
+            unmatched = np.concatenate((unmatched,indices.reshape((1,2))))
     
     # Add filtered out matches to unmatched lists
-    unmatched_detections = np.concatenate((unmatched_detections,unmatched[:,0]),dtype=int)
-    unmatched_trackers = np.concatenate((unmatched_trackers,unmatched[:,1]),dtype=int)
+    unmatched_detections = np.concatenate((unmatched_detections,unmatched[:,0]))
+    unmatched_trackers = np.concatenate((unmatched_trackers,unmatched[:,1]))
     
     return matched, unmatched_detections, unmatched_trackers
 
@@ -289,13 +287,13 @@ class SORT:
             predicted_boxes = np.empty((0,4))
 
         # Detections associations to trackers
-        matched, unmatched_detections, unmatched_trackers = associate_detections_to_trackers(
+        matched_indices, unmatched_detections, unmatched_trackers = associate_detections_to_trackers(
             detections,predicted_boxes,self.iou_threshold)
 
-        # Update matched trackers
+        # Update matched_indices trackers
         for t,trk in enumerate(self.trackers):
             if t not in unmatched_trackers:
-                det_index = matched[np.where(matched[:,1] == t)[0][0],0]
+                det_index = matched_indices[np.where(matched_indices[:,1] == t)[0][0],0]
                 trk.update(detections[det_index])
 
         # New trackers for unmatched detections
@@ -366,13 +364,17 @@ for seq in os.listdir(path):
     image_files = [f for f in os.listdir(seq_path)]
     image_files.sort()
 
+    # Read frames
+    if display:
+        frame_list = [cv2.imread(os.path.join(seq_path,image_file)) for image_file in image_files]
+
     # Outputs list
     outputs = np.empty((0,5))
 
     # Cicle through sequence's frames
-    for image in image_files:
+    for x in range(len(image_files)):
 
-        image_path = os.path.join(seq_path,image)
+        image_path = os.path.join(seq_path,image_files[x])
 
         # Get detections from YOLOv8
         detections = detector.get_detections(image_path)
@@ -383,14 +385,14 @@ for seq in os.listdir(path):
         # Display results frame by frame
         if display:
 
-            frame = cv2.imread(image_path)
+            frame = frame_list[x]
 
             # Drawing bounding boxes
             for o in output:
                 id, x1, y1, x2, y2 = int(o[0]), int(o[1]), int(o[2]), int(o[3]), int(o[4])
                 color = trackers_color[id]
                 cv2.rectangle(frame, (x1,y1), (x2,y2), color, 2)
-                cv2.putText(frame, f'ID: {id}', (x1, y1-5), cv2.FONT_ITALIC, 0.7, color, 2)
+                cv2.putText(frame, f'ID: {id}', (x1, y1-5), cv2.FONT_ITALIC, 0.6, color, 2)
 
             # Adjust visualization in case of screen not big enough
             if width > screen_width or height > screen_height:
