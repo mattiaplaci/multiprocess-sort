@@ -308,7 +308,7 @@ class SORT:
         # Build outputs
         output = []
         for trk in self.trackers:
-            if trk.get_hit_streak() >= self.min_hits or self.frame_count < self.min_hits:
+            if trk.get_hit_streak() >= self.min_hits or self.frame_count <= self.min_hits:
                 box = trk.get_box()
                 row = np.concatenate(([trk.get_id()],box)).reshape((1,5))
                 output.append(row)
