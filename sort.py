@@ -4,6 +4,7 @@ import numpy as np
 from skimage import io
 import configparser
 import tkinter
+import torch
 
 from ultralytics import YOLO
 
@@ -16,17 +17,27 @@ class YOLOv8Detector:
 
     def __init__(self,score_threshold=0.5):
 
+        if use_gpu:
+            # Use gpu if available
+            self.device = torch.device('cpu' if torch.cuda.is_available() else 'cpu')
+        else:
+            self.device = torch.device('cpu')
+
         # Pretrained YOLOv8 model
         self.model = YOLO('yolov8n.pt')
+        self.model.to(self.device)
+
+        # Detector parameters
         self.score_threshold = score_threshold
 
-    def get_detections(self,image):
+
+    def get_detections(self,image_path):
 
         # Detect on a single frame
-        results = self.model(image)
+        results = self.model(image_path)
 
         # Detections in [x1,y1,x2,y2] format
-        detections = results[0].boxes.data.numpy()
+        detections = results[0].boxes.data.cpu().numpy()
 
         # Discard detections different from pedestrians
         detections = detections[np.where(detections[:,5] == 0)]
@@ -306,6 +317,7 @@ class SORT:
 
 
 display = True
+use_gpu = False
 
 tk = tkinter.Tk()
 screen_width, screen_height = tk.winfo_screenwidth(), tk.winfo_screenheight()
@@ -341,13 +353,16 @@ for seq in os.listdir(path):
     # Cicle through sequence's frames
     for image in image_files:
 
-        frame = io.imread(os.path.join(seq_path,image))
+        image_path = os.path.join(seq_path,image)
 
-        detections = detector.get_detections(frame)
+        detections = detector.get_detections(image_path)
 
         output = mot_tracker.update(detections)
 
         if display:
+
+            frame = io.imread(image_path)
+
             for o in output:
                 id, x1, y1, x2, y2 = int(o[0]), int(o[1]), int(o[2]), int(o[3]), int(o[4])
                 cv2.rectangle(frame, (x1,y1), (x2,y2), (255,0,0), 2)
