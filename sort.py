@@ -135,15 +135,19 @@ class KalmanBoxTracker:
         self.time_since_update = 0
         self.hit_streak = 0
 
+        # Assign random color to tracker
         trackers_color[self.id] = (np.random.randint(0,256),np.random.randint(0,256),np.random.randint(0,256))
 
         KalmanBoxTracker.count += 1
 
+
     def predict(self):
 
+        # Handle scale (area) negative values
         if((self.kf.x[6]+self.kf.x[2])<=0):
             self.kf.x[6] *= 0.0
 
+        # Predict next frame
         self.kf.predict()
 
         if self.time_since_update > 0:
@@ -152,13 +156,18 @@ class KalmanBoxTracker:
 
         return self.get_box()
 
-    def update(self,det):
 
+    def update(self,det):
+        
+        # Update tracker with new detection
         box = convert_xyxy_to_xysr(det)
         self.kf.update(box)
 
         self.time_since_update = 0
         self.hit_streak += 1
+
+
+    # Getter methods
 
     def get_state(self):
         return self.kf.x
@@ -317,17 +326,22 @@ class SORT:
         self.frame_count = 0
 
 
+# Script arguments
 display = True
 use_gpu = False
 
+# Screen info
 tk = tkinter.Tk()
 screen_width, screen_height = tk.winfo_screenwidth(), tk.winfo_screenheight()
 screen_ratio = screen_width/screen_height
 
-trackers_color = {}
+# Configuration files reader
+config = configparser.ConfigParser()
 
+# Load YOLOv8 detector
 detector = YOLOv8Detector()
 
+# Create SORT tracker object
 mot_tracker = SORT()
 
 path = os.path.dirname('data/train/')
@@ -338,13 +352,15 @@ for seq in os.listdir(path):
     seq_path = os.path.join(path,seq,'img1')
 
     # Get sequence info
-    config = configparser.ConfigParser()
     config.read(os.path.join(path,seq,'seqinfo.ini'))
     seq_name = config.get('Sequence','name')
     framerate = config.getint('Sequence', 'frameRate')
     width = config.getint('Sequence','imWidth')
     height = config.getint('Sequence','imHeight')
     ratio = width/height
+
+    # Keep track of bounding boxes colors
+    trackers_color = {}
 
     # Frames list
     image_files = [f for f in os.listdir(seq_path)]
@@ -358,20 +374,25 @@ for seq in os.listdir(path):
 
         image_path = os.path.join(seq_path,image)
 
+        # Get detections from YOLOv8
         detections = detector.get_detections(image_path)
 
+        # Update trackers state
         output = mot_tracker.update(detections)
 
+        # Display results frame by frame
         if display:
 
             frame = cv2.imread(image_path)
 
+            # Drawing bounding boxes
             for o in output:
                 id, x1, y1, x2, y2 = int(o[0]), int(o[1]), int(o[2]), int(o[3]), int(o[4])
                 color = trackers_color[id]
                 cv2.rectangle(frame, (x1,y1), (x2,y2), color, 2)
                 cv2.putText(frame, f'ID: {id}', (x1, y1-5), cv2.FONT_ITALIC, 0.7, color, 2)
 
+            # Adjust visualization in case of screen not big enough
             if width > screen_width or height > screen_height:
                 if ratio > screen_ratio:
                     frame = cv2.resize(frame,(screen_width,int(screen_width/ratio)))
@@ -385,6 +406,7 @@ for seq in os.listdir(path):
 
         outputs = np.concatenate((outputs,output))
 
+    # Reset tracker for new sequence
     mot_tracker.reset()
     KalmanBoxTracker.count = 0
 
