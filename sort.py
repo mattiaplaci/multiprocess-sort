@@ -271,11 +271,9 @@ class SORT:
         self.min_hits = min_hits
         self.iou_threshold = iou_threshold
 
-        self.frame_count = 0
-
     def update(self,detections):
 
-        self.frame_count += 1
+        global frame_count
         
         # Predict new positions through trackers from previous frame
         predicted_boxes = []
@@ -305,10 +303,10 @@ class SORT:
         # Filter out old trackers
         self.trackers = [trk for trk in self.trackers if trk.get_time_since_update() < self.max_age]
 
-        # Build outputs
+        # Build output
         output = []
         for trk in self.trackers:
-            if trk.get_hit_streak() >= self.min_hits or self.frame_count <= self.min_hits:
+            if trk.get_hit_streak() >= self.min_hits or frame_count <= self.min_hits:
                 box = trk.get_box()
                 row = np.concatenate(([trk.get_id()],box)).reshape((1,5))
                 output.append(row)
@@ -322,7 +320,6 @@ class SORT:
     # Reset tracker status for new sequences
     def reset(self):
         self.trackers = []
-        self.frame_count = 0
 
 
 # Script arguments
@@ -347,7 +344,12 @@ detector = YOLOv8Detector()
 # Create SORT tracker object
 mot_tracker = SORT()
 
+# Train set path
 path = os.path.dirname('data/train/')
+
+# Create output directory
+if not os.path.exists('output'):
+    os.makedirs('output')
 
 # Cicle through the train sequences
 for seq in os.listdir(path):
@@ -356,7 +358,6 @@ for seq in os.listdir(path):
 
     # Get sequence info
     config.read(os.path.join(path,seq,'seqinfo.ini'))
-    seq_name = config.get('Sequence','name')
     framerate = config.getint('Sequence', 'frameRate')
     width = config.getint('Sequence','imWidth')
     height = config.getint('Sequence','imHeight')
@@ -368,16 +369,18 @@ for seq in os.listdir(path):
     # Frames list
     image_files = [f for f in os.listdir(seq_path)]
     image_files.sort()
+    frame_count = 0
 
     # Read frames
     if display:
         frame_list = [cv2.imread(os.path.join(seq_path,image_file)) for image_file in image_files]
-
-    # Outputs list
-    outputs = np.empty((0,5))
+    else:
+        output_file = open(os.path.join('output','%s.txt'%(seq)),'w')
 
     # Cicle through sequence's frames
     for x in range(len(image_files)):
+
+        frame_count += 1
 
         image_path = os.path.join(seq_path,image_files[x])
 
@@ -411,7 +414,12 @@ for seq in os.listdir(path):
             cv2.imshow(seq,frame)
             cv2.waitKey(int(1000/framerate))
 
-        outputs = np.concatenate((outputs,output))
+        else:
+
+            for o in output:
+                id, x1, y1, x2, y2 = int(o[0]), o[1], o[2], o[3], o[4]
+                print('%d,%d,%.2f,%.2f,%.2f,%.2f,1,-1,-1,-1'%(
+                    frame_count,id,x1,y1,x2-x1,y2-y1), file=output_file)
 
     # Reset tracker for new sequence
     mot_tracker.reset()
