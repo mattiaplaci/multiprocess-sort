@@ -427,3 +427,5 @@ for seq in os.listdir(path):
 
     if display:
         cv2.destroyAllWindows()
+    else:
+        output_file.close()
