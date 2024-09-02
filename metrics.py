@@ -41,7 +41,7 @@ def accumulate_metrics(accumulator,gt_file,results_file,num_frames):
         accumulator.update(gt_ids,tracker_ids,dists)
 
 
-def calculate_metrics(accumulator):
+def calculate_metrics(accumulator,out_file):
 
     mh = mm.metrics.create()
 
@@ -67,7 +67,7 @@ def calculate_metrics(accumulator):
                                              'num_switches':'IDSW','num_fragmentations':'FRAG'})
 
     print()
-    print(summary)
+    print(summary,file=out_file)
     print()
 
 
@@ -91,7 +91,8 @@ for seq in os.listdir(data_path):
 
     accumulate_metrics(global_accumulator,gt_path,results_path,num_frames)
 
+with open(os.path.join('output_metrics.txt'),'a') as out_file:
 
-calculate_metrics(global_accumulator)
+    calculate_metrics(global_accumulator,out_file)
 
 
