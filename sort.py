@@ -4,7 +4,7 @@ import numpy as np
 import configparser
 import tkinter
 import torch
-import sys
+import argparse
 
 from ultralytics import YOLO
 
@@ -322,19 +322,27 @@ class SORT:
         self.trackers = []
 
 
+# Parse script arguments
+def parse_arg():
+    parser = argparse.ArgumentParser(description='SORT by Mattia Corrado Placì')
+    parser.add_argument('--display', dest='display', action='store_true', help='Display tracker output [False by default]')
+    parser.add_argument('--use_gpu', dest='use_gpu', action='store_true', help='Decide whether to use gpu to compute detections [False by default]')
+    parser.add_argument('--test', dest='test', action='store_true', help='Decide whether to use test set, metrics not available [False by default]')
+    parser.add_argument('--save_output', dest='save_output', action='store_true', help='Decide whether to save the tracker output [False by default]')
+    parser.add_argument('-max_age', default=1, type=int, help='Maximum number of frames to keep alive a track without associated detections [1 by default]')
+    parser.add_argument('-min_hits', default=3, type=int, help='Minimum number of associated detections before track is initialised [3 by default]')
+    parser.add_argument('-iou_threshold', default=0.3, type=float, help='Minimum IOU for match [0.3 by default]')
+    parser.add_argument('-detection_score_threshold', default=0.5, type=float, help='Minimum score to consider detection [0.5 by default]')
+    args = parser.parse_args()
+    return args
+
+
 # Script arguments
-display = False
-use_gpu = False
-test = False
-save_output = False
-if '--display' in sys.argv:
-    display = True
-if '--use_gpu' in sys.argv:
-    use_gpu = True
-if '--test' in sys.argv:
-    test = True
-if '--save_output' in sys.argv:
-    save_output = True
+args = parse_arg()
+display = args.display
+use_gpu = args.use_gpu
+test = args.test
+save_output = args.save_output
 
 # Screen info
 tk = tkinter.Tk()
@@ -345,10 +353,10 @@ screen_ratio = screen_width/screen_height
 config = configparser.ConfigParser()
 
 # Load YOLOv8 detector
-detector = YOLOv8Detector()
+detector = YOLOv8Detector(args.detection_score_threshold)
 
 # Create SORT tracker object
-mot_tracker = SORT()
+mot_tracker = SORT(max_age=args.max_age, min_hits=args.min_hits, iou_threshold=args.iou_threshold)
 
 # Train set path
 if test:
