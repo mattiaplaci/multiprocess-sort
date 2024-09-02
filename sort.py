@@ -34,7 +34,7 @@ class YOLOv8Detector:
     def get_detections(self,image_path):
 
         # Detect on a single frame
-        results = self.model(image_path)
+        results = self.model(image_path, verbose=False)
 
         # Detections in [x1,y1,x2,y2] format
         detections = results[0].boxes.data.cpu().numpy()
@@ -370,6 +370,8 @@ if save_output and not os.path.exists('output'):
 
 # Cicle through the train sequences
 for seq in os.listdir(path):
+
+    print('Processing ',seq)
 
     seq_path = os.path.join(path,seq,'img1')
 
