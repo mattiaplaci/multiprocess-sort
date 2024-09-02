@@ -325,10 +325,16 @@ class SORT:
 # Script arguments
 display = False
 use_gpu = False
+test = False
+save_output = False
 if '--display' in sys.argv:
     display = True
 if '--use_gpu' in sys.argv:
     use_gpu = True
+if '--test' in sys.argv:
+    test = True
+if '--save_output' in sys.argv:
+    save_output = True
 
 # Screen info
 tk = tkinter.Tk()
@@ -345,10 +351,13 @@ detector = YOLOv8Detector()
 mot_tracker = SORT()
 
 # Train set path
-path = os.path.dirname('data/train/')
+if test:
+    path = os.path.dirname('data/test/')
+else:
+    path = os.path.dirname('data/train/')
 
 # Create output directory
-if not os.path.exists('output'):
+if save_output and not os.path.exists('output'):
     os.makedirs('output')
 
 # Cicle through the train sequences
@@ -374,7 +383,7 @@ for seq in os.listdir(path):
     # Read frames
     if display:
         frame_list = [cv2.imread(os.path.join(seq_path,image_file)) for image_file in image_files]
-    else:
+    if save_output:
         output_file = open(os.path.join('output','%s.txt'%(seq)),'w')
 
     # Cicle through sequence's frames
@@ -414,7 +423,7 @@ for seq in os.listdir(path):
             cv2.imshow(seq,frame)
             cv2.waitKey(int(1000/framerate))
 
-        else:
+        if save_output:
 
             for o in output:
                 id, x1, y1, x2, y2 = int(o[0]), o[1], o[2], o[3], o[4]
@@ -427,5 +436,5 @@ for seq in os.listdir(path):
 
     if display:
         cv2.destroyAllWindows()
-    else:
+    if save_output:
         output_file.close()
