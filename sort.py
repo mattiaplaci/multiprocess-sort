@@ -5,6 +5,7 @@ import configparser
 import tkinter
 import torch
 import argparse
+import time
 
 from ultralytics import YOLO
 
@@ -326,6 +327,44 @@ class SORT:
         self.trackers = []
 
 
+def process_frame(image_path,frame):
+
+    # Get detections from YOLOv8
+    detections = detector.get_detections(image_path)
+
+    # Update trackers state
+    output = mot_tracker.update(detections)
+
+    # Display results frame by frame
+    if display:
+
+        # Drawing bounding boxes
+        for o in output:
+            id, x1, y1, x2, y2 = int(o[0]), int(o[1]), int(o[2]), int(o[3]), int(o[4])
+            color = trackers_color[id]
+            cv2.rectangle(frame, (x1,y1), (x2,y2), color, 2)
+            cv2.putText(frame, f'ID: {id}', (x1, y1-5), cv2.FONT_ITALIC, 0.6, color, 2)
+
+        # Adjust visualization in case of screen not big enough
+        if width > screen_width or height > screen_height:
+            if ratio > screen_ratio:
+                frame = cv2.resize(frame,(screen_width,int(screen_width/ratio)))
+            elif ratio < screen_ratio:
+                frame = cv2.resize(frame,(int(screen_height*ratio),screen_height))
+            else:
+                frame = cv2.resize(frame,(screen_width,screen_height))
+
+        cv2.imshow(seq,frame)
+        cv2.waitKey(int(1000/framerate))
+
+    if save_output:
+
+        for o in output:
+            id, x1, y1, x2, y2 = int(o[0]), o[1], o[2], o[3], o[4]
+            print('%d,%d,%.2f,%.2f,%.2f,%.2f,1,-1,-1,-1'%(
+                frame_count,id,x1,y1,x2-x1,y2-y1), file=output_file)
+
+
 # Parse script arguments
 def parse_arg():
     parser = argparse.ArgumentParser(description='SORT by Mattia Corrado Placì')
@@ -383,8 +422,6 @@ if save_output and not os.path.exists('output'):
 # Cicle through the train sequences
 for seq in os.listdir(path):
 
-    print(seq+': ','Processing...')
-
     seq_path = os.path.join(path,seq,'img1')
 
     if display:
@@ -404,12 +441,13 @@ for seq in os.listdir(path):
     frame_count = 0
 
     # Read frames
-    if display:
-        frame_list = [cv2.imread(os.path.join(seq_path,image_file)) for image_file in image_files]
+    frame_list = [cv2.imread(os.path.join(seq_path,image_file)) for image_file in image_files]
 
     # Open output file
     if save_output:
         output_file = open(os.path.join('output','%s.txt'%(seq)),'w')
+
+    print(seq+': ','Processing...')
 
     # Cicle through sequence's frames
     for x in range(len(image_files)):
@@ -418,42 +456,7 @@ for seq in os.listdir(path):
 
         image_path = os.path.join(seq_path,image_files[x])
 
-        # Get detections from YOLOv8
-        detections = detector.get_detections(image_path)
-
-        # Update trackers state
-        output = mot_tracker.update(detections)
-
-        # Display results frame by frame
-        if display:
-
-            frame = frame_list[x]
-
-            # Drawing bounding boxes
-            for o in output:
-                id, x1, y1, x2, y2 = int(o[0]), int(o[1]), int(o[2]), int(o[3]), int(o[4])
-                color = trackers_color[id]
-                cv2.rectangle(frame, (x1,y1), (x2,y2), color, 2)
-                cv2.putText(frame, f'ID: {id}', (x1, y1-5), cv2.FONT_ITALIC, 0.6, color, 2)
-
-            # Adjust visualization in case of screen not big enough
-            if width > screen_width or height > screen_height:
-                if ratio > screen_ratio:
-                    frame = cv2.resize(frame,(screen_width,int(screen_width/ratio)))
-                elif ratio < screen_ratio:
-                    frame = cv2.resize(frame,(int(screen_height*ratio),screen_height))
-                else:
-                    frame = cv2.resize(frame,(screen_width,screen_height))
-
-            cv2.imshow(seq,frame)
-            cv2.waitKey(int(1000/framerate))
-
-        if save_output:
-
-            for o in output:
-                id, x1, y1, x2, y2 = int(o[0]), o[1], o[2], o[3], o[4]
-                print('%d,%d,%.2f,%.2f,%.2f,%.2f,1,-1,-1,-1'%(
-                    frame_count,id,x1,y1,x2-x1,y2-y1), file=output_file)
+        process_frame(image_path,frame_list[x])
 
     # Reset tracker for new sequence
     mot_tracker.reset()
