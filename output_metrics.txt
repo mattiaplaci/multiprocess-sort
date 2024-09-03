@@ -88,3 +88,152 @@ Metrics 61.22% 94.87% 8.71% 26.46% 11.66%  479  15126  1122   895
           MOTA   MOTP   FAF     MT     ML   FP     FN  IDSW  FRAG
 Metrics 61.22% 94.87% 8.71% 26.46% 11.66%  479  15126  1122   895
 
+(2, 2, 0.3, 0.4)
+
+          MOTA   MOTP    FAF     MT    ML    FP     FN  IDSW  FRAG
+Metrics 68.61% 94.15% 24.93% 48.43% 4.04%  1371  10902  1267   977
+
+(2, 2, 0.3, 0.5)
+
+          MOTA   MOTP    FAF     MT    ML   FP     FN  IDSW  FRAG
+Metrics 63.35% 93.00% 12.47% 35.87% 9.87%  686  14042  1083   989
+
+(2, 2, 0.4, 0.4)
+
+          MOTA   MOTP    FAF     MT    ML    FP     FN  IDSW  FRAG
+Metrics 68.23% 93.92% 23.93% 49.33% 4.48%  1316  11098  1289  1010
+
+(2, 2, 0.4, 0.5)
+
+          MOTA   MOTP    FAF     MT     ML   FP     FN  IDSW  FRAG
+Metrics 63.00% 94.03% 12.04% 36.77% 10.31%  662  14201  1097  1018
+
+(2, 2, 0.5, 0.4)
+
+          MOTA   MOTP    FAF     MT    ML    FP     FN  IDSW  FRAG
+Metrics 67.41% 94.45% 22.18% 45.74% 4.93%  1220  11472  1366  1087
+
+(2, 2, 0.5, 0.5)
+
+          MOTA   MOTP    FAF     MT     ML   FP     FN  IDSW  FRAG
+Metrics 62.24% 93.73% 11.36% 32.29% 10.31%  625  14505  1159  1063
+
+(2, 3, 0.3, 0.4)
+
+          MOTA   MOTP    FAF     MT    ML    FP     FN  IDSW  FRAG
+Metrics 66.88% 92.75% 18.25% 41.70% 7.17%  1004  12162  1122   929
+
+(2, 3, 0.3, 0.5)
+
+          MOTA   MOTP   FAF     MT     ML   FP     FN  IDSW  FRAG
+Metrics 61.22% 94.30% 9.09% 26.91% 11.21%  500  15229  1000   900
+
+(2, 3, 0.4, 0.4)
+
+          MOTA   MOTP    FAF     MT    ML   FP     FN  IDSW  FRAG
+Metrics 66.38% 93.73% 17.60% 38.12% 6.28%  968  12383  1150   943
+
+(2, 3, 0.4, 0.5)
+
+          MOTA   MOTP   FAF     MT     ML   FP     FN  IDSW  FRAG
+Metrics 60.85% 93.72% 8.78% 30.04% 12.11%  483  15412   994   886
+
+(2, 3, 0.5, 0.4)
+
+          MOTA   MOTP    FAF     MT    ML   FP     FN  IDSW  FRAG
+Metrics 65.33% 94.15% 16.05% 35.87% 8.52%  883  12860  1211   998
+
+(2, 3, 0.5, 0.5)
+
+          MOTA   MOTP   FAF     MT    ML   FP     FN  IDSW  FRAG
+Metrics 59.91% 93.87% 8.20% 29.60% 9.87%  451  15798  1043   929
+
+(2, 4, 0.3, 0.4)
+
+          MOTA   MOTP    FAF     MT    ML   FP     FN  IDSW  FRAG
+Metrics 65.12% 94.18% 14.13% 37.22% 7.17%  777  13223  1047   865
+
+(2, 4, 0.3, 0.5)
+
+          MOTA   MOTP   FAF     MT     ML   FP     FN  IDSW  FRAG
+Metrics 59.35% 93.42% 7.11% 24.66% 13.00%  391  16261   885   831
+
+(2, 4, 0.4, 0.4)
+
+          MOTA   MOTP    FAF     MT    ML   FP     FN  IDSW  FRAG
+Metrics 64.62% 93.54% 13.64% 34.53% 5.83%  750  13468  1043   872
+
+(2, 4, 0.4, 0.5)
+
+          MOTA   MOTP   FAF     MT     ML   FP     FN  IDSW  FRAG
+Metrics 58.96% 92.89% 6.85% 26.01% 12.11%  377  16435   891   835
+
+(2, 4, 0.5, 0.4)
+
+          MOTA   MOTP    FAF     MT    ML   FP     FN  IDSW  FRAG
+Metrics 63.42% 94.20% 12.18% 31.84% 9.87%  670  14014  1097   913
+
+(2, 4, 0.5, 0.5)
+
+          MOTA   MOTP   FAF     MT     ML   FP     FN  IDSW  FRAG
+Metrics 57.95% 94.47% 6.27% 21.08% 14.80%  345  16878   916   845
+
+(3, 2, 0.3, 0.4)
+
+          MOTA   MOTP    FAF     MT    ML    FP     FN  IDSW  FRAG
+Metrics 68.91% 94.25% 25.98% 49.78% 4.48%  1429  10747  1235  1025
+
+(3, 2, 0.3, 0.5)
+
+          MOTA   MOTP    FAF     MT    ML   FP     FN  IDSW  FRAG
+Metrics 63.77% 93.20% 12.78% 37.22% 7.17%  703  13888  1038  1026
+
+(3, 2, 0.4, 0.4)
+
+          MOTA   MOTP    FAF     MT    ML    FP     FN  IDSW  FRAG
+Metrics 68.52% 94.93% 24.78% 51.57% 4.48%  1363  10955  1260  1035
+
+(3, 2, 0.4, 0.5)
+
+          MOTA   MOTP    FAF     MT    ML   FP     FN  IDSW  FRAG
+Metrics 63.44% 92.91% 12.31% 34.53% 8.07%  677  14056  1037  1046
+
+(3, 2, 0.5, 0.4)
+
+          MOTA   MOTP    FAF     MT    ML    FP     FN  IDSW  FRAG
+Metrics 67.65% 93.97% 22.93% 46.19% 4.48%  1261  11353  1339  1122
+
+(3, 2, 0.5, 0.5)
+
+          MOTA   MOTP    FAF     MT    ML   FP     FN  IDSW  FRAG
+Metrics 62.63% 92.97% 11.55% 34.08% 8.07%  635  14375  1112  1095
+
+(3, 3, 0.3, 0.4)
+
+          MOTA   MOTP    FAF     MT    ML    FP     FN  IDSW  FRAG
+Metrics 67.10% 92.48% 18.91% 38.12% 5.83%  1040  12055  1098   940
+
+(3, 3, 0.3, 0.5)
+
+          MOTA   MOTP   FAF     MT     ML   FP     FN  IDSW  FRAG
+Metrics 61.59% 93.68% 9.18% 30.04% 10.76%  505  15115   950   918
+
+(3, 3, 0.4, 0.4)
+
+          MOTA   MOTP    FAF     MT    ML   FP     FN  IDSW  FRAG
+Metrics 66.68% 94.00% 17.89% 37.67% 6.73%  984  12278  1112   960
+
+(3, 3, 0.4, 0.5)
+
+          MOTA   MOTP   FAF     MT     ML   FP     FN  IDSW  FRAG
+Metrics 61.16% 93.61% 8.84% 30.04% 13.00%  486  15302   965   910
+
+(3, 3, 0.5, 0.4)
+
+          MOTA   MOTP    FAF     MT    ML   FP     FN  IDSW  FRAG
+Metrics 65.61% 94.39% 16.29% 35.43% 8.07%  896  12766  1175  1011
+
+(3, 3, 0.5, 0.5)
+
+          MOTA   MOTP   FAF     MT     ML   FP     FN  IDSW  FRAG
+Metrics 60.25% 94.35% 8.27% 26.01% 10.76%  455  15698   996   950
