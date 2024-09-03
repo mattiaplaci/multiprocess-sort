@@ -371,7 +371,7 @@ if save_output and not os.path.exists('output'):
 # Cicle through the train sequences
 for seq in os.listdir(path):
 
-    print('Processing ',seq)
+    print(seq+': ','Processing...')
 
     seq_path = os.path.join(path,seq,'img1')
 

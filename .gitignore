@@ -4,3 +4,4 @@ profile.pstats
 output/*
 4_fold_cross_validation.py
 output_metrics.txt
+__pycache__/*

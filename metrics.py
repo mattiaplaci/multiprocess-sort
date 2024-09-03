@@ -66,31 +66,33 @@ def calculate_metrics(accumulator):
                                              'num_false_positives':'FP','num_misses':'FN',
                                              'num_switches':'IDSW','num_fragmentations':'FRAG'})
 
-    print()
-    print(summary)
-    print()
+    return summary
 
 
-if not os.path.exists('output'):
-    print('Output files not found, please execute sort.py')
-    exit()
+def main():
 
-data_path = os.path.dirname('data/train/')
+    if not os.path.exists('output'):
+        print('Output files not found, please execute sort.py')
+        exit()
 
-config = configparser.ConfigParser()
+    data_path = os.path.dirname('data/train/')
 
-global_accumulator = mm.MOTAccumulator(auto_id=True)
+    config = configparser.ConfigParser()
 
-for seq in os.listdir(data_path):
+    global_accumulator = mm.MOTAccumulator(auto_id=True)
 
-    gt_path = os.path.join(data_path,seq,'gt','gt.txt')
-    results_path = os.path.join('output',seq + '.txt')
+    for seq in os.listdir(data_path):
 
-    config.read(os.path.join(data_path,seq,'seqinfo.ini'))
-    num_frames = config.getint('Sequence','seqLength')
+        gt_path = os.path.join(data_path,seq,'gt','gt.txt')
+        results_path = os.path.join('output',seq + '.txt')
 
-    accumulate_metrics(global_accumulator,gt_path,results_path,num_frames)
+        config.read(os.path.join(data_path,seq,'seqinfo.ini'))
+        num_frames = config.getint('Sequence','seqLength')
 
-calculate_metrics(global_accumulator)
+        accumulate_metrics(global_accumulator,gt_path,results_path,num_frames)
+
+    return calculate_metrics(global_accumulator)
 
 
+if __name__ == '__main__':
+    print(main())
