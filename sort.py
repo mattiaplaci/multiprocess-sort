@@ -12,6 +12,9 @@ from filterpy.kalman import KalmanFilter
 
 from scipy.optimize import linear_sum_assignment
 
+import cProfile
+import pstats
+
 
 class YOLOv8Detector:
 
@@ -136,8 +139,9 @@ class KalmanBoxTracker:
         self.time_since_update = 0
         self.hit_streak = 0
 
-        # Assign random color to tracker
-        trackers_color[self.id] = (np.random.randint(0,256),np.random.randint(0,256),np.random.randint(0,256))
+        if display:
+            # Assign random color to tracker
+            trackers_color[self.id] = (np.random.randint(0,256),np.random.randint(0,256),np.random.randint(0,256))
 
         KalmanBoxTracker.count += 1
 
@@ -329,6 +333,7 @@ def parse_arg():
     parser.add_argument('--use_gpu', dest='use_gpu', action='store_true', help='Decide whether to use gpu to compute detections [False by default]')
     parser.add_argument('--test', dest='test', action='store_true', help='Decide whether to use test set, metrics not available [False by default]')
     parser.add_argument('--save_output', dest='save_output', action='store_true', help='Decide whether to save the tracker output [False by default]')
+    parser.add_argument('--profile', dest='profile', action='store_true', help='Enable profiling [False by default]')
     parser.add_argument('-max_age', default=1, type=int, help='Maximum number of frames to keep alive a track without associated detections [1 by default]')
     parser.add_argument('-min_hits', default=3, type=int, help='Minimum number of associated detections before track is initialised [3 by default]')
     parser.add_argument('-iou_threshold', default=0.3, type=float, help='Minimum IOU for match [0.3 by default]')
@@ -343,14 +348,21 @@ display = args.display
 use_gpu = args.use_gpu
 test = args.test
 save_output = args.save_output
+profile = args.profile
 
-# Screen info
-tk = tkinter.Tk()
-screen_width, screen_height = tk.winfo_screenwidth(), tk.winfo_screenheight()
-screen_ratio = screen_width/screen_height
+# Profiling
+if profile:
+    profiler = cProfile.Profile()
+    profiler.enable()
 
-# Configuration files reader
-config = configparser.ConfigParser()
+if display:
+    # Screen info
+    tk = tkinter.Tk()
+    screen_width, screen_height = tk.winfo_screenwidth(), tk.winfo_screenheight()
+    screen_ratio = screen_width/screen_height
+    
+    # Configuration files reader
+    config = configparser.ConfigParser()
 
 # Load YOLOv8 detector
 detector = YOLOv8Detector(args.detection_score_threshold)
@@ -375,15 +387,16 @@ for seq in os.listdir(path):
 
     seq_path = os.path.join(path,seq,'img1')
 
-    # Get sequence info
-    config.read(os.path.join(path,seq,'seqinfo.ini'))
-    framerate = config.getint('Sequence', 'frameRate')
-    width = config.getint('Sequence','imWidth')
-    height = config.getint('Sequence','imHeight')
-    ratio = width/height
+    if display:
+        # Get sequence info
+        config.read(os.path.join(path,seq,'seqinfo.ini'))
+        framerate = config.getint('Sequence', 'frameRate')
+        width = config.getint('Sequence','imWidth')
+        height = config.getint('Sequence','imHeight')
+        ratio = width/height
 
-    # Keep track of bounding boxes colors
-    trackers_color = {}
+        # Keep track of bounding boxes colors
+        trackers_color = {}
 
     # Frames list
     image_files = [f for f in os.listdir(seq_path)]
@@ -393,6 +406,8 @@ for seq in os.listdir(path):
     # Read frames
     if display:
         frame_list = [cv2.imread(os.path.join(seq_path,image_file)) for image_file in image_files]
+
+    # Open output file
     if save_output:
         output_file = open(os.path.join('output','%s.txt'%(seq)),'w')
 
@@ -448,3 +463,8 @@ for seq in os.listdir(path):
         cv2.destroyAllWindows()
     if save_output:
         output_file.close()
+
+if profile:
+    profiler.disable()
+    stats = pstats.Stats(profiler).sort_stats('cumulative')
+    stats.dump_stats('profile.prof')
