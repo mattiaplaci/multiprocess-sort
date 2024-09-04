@@ -1,9 +1,9 @@
 __pycache__/*
 data/*
+performances/*
 prof.py
 profile.pstats
 output/*
 4_fold_cross_validation.py
 output_metrics.txt
 profile.prof
-performance.txt

@@ -6,6 +6,8 @@ import tkinter
 import torch
 import argparse
 import time
+import psutil
+import matplotlib.pyplot as plt
 
 from ultralytics import YOLO
 
@@ -391,35 +393,13 @@ save_output = args.save_output
 profile = args.profile
 performance = args.performance
 
-if profile:
-    # Profiling
-    profiler = cProfile.Profile()
-    profiler.enable()
-
-if performance:
-    performance_file = open('performance.txt','w')
-
-    # Timer
-    global_frame_count = 0
-    global_avg_frame_time = 0.0
-    start_time = time.time()
-
 if display:
     # Screen info
     tk = tkinter.Tk()
     screen_width, screen_height = tk.winfo_screenwidth(), tk.winfo_screenheight()
     screen_ratio = screen_width/screen_height
-    
-# Configuration files reader
-config = configparser.ConfigParser()
 
-# Load YOLOv8 detector
-detector = YOLOv8Detector(args.detection_score_threshold)
-
-# Create SORT tracker object
-mot_tracker = SORT(max_age=args.max_age, min_hits=args.min_hits, iou_threshold=args.iou_threshold)
-
-# Train set path
+# Dataset path
 if test:
     path = os.path.dirname('data/test/')
 else:
@@ -429,8 +409,41 @@ else:
 if save_output and not os.path.exists('output'):
     os.makedirs('output')
 
+# Profiling
+if profile:
+    profiler = cProfile.Profile()
+    profiler.enable()
+
+# Performance metrics
+if performance:
+    performance_file = open('performances/performance.txt','w')
+
+    # CPU usage
+    pid = os.getpid()
+    process = psutil.Process(pid)
+    fig, ax = plt.subplots()
+    cpu_usage = []
+    process.cpu_percent()
+
+    # Timer
+    global_frame_count = 0
+    global_avg_frame_time = 0.0
+    start_time = time.time()
+
+
+# Configuration files reader
+config = configparser.ConfigParser()
+
+# Load YOLOv8 detector
+detector = YOLOv8Detector(args.detection_score_threshold)
+
+# Create SORT tracker object
+mot_tracker = SORT(max_age=args.max_age, min_hits=args.min_hits, iou_threshold=args.iou_threshold)
+
 # Cicle through the train sequences
 for seq in os.listdir(path):
+
+    print(seq+': ','Processing...')
 
     seq_path = os.path.join(path,seq,'img1')
 
@@ -454,16 +467,14 @@ for seq in os.listdir(path):
 
         # Read frames
         frame_list = [cv2.imread(os.path.join(seq_path,image_file)) for image_file in image_files]
-
-    if performance:
-        seq_num_frames = config.getint('Sequence','seqLength')
-        avg_frame_time = 0.0
-
+    
     # Open output file
     if save_output:
         output_file = open(os.path.join('output','%s.txt'%(seq)),'w')
 
-    print(seq+': ','Processing...')
+    if performance:
+        seq_num_frames = config.getint('Sequence','seqLength')
+        avg_frame_time = 0.0
 
     # Cicle through sequence's frames
     for x in range(len(image_files)):
@@ -484,6 +495,8 @@ for seq in os.listdir(path):
         if performance:
             frame_end_time = time.time()
             frame_time = frame_end_time - frame_start_time
+
+            cpu_usage.append(process.cpu_percent()/psutil.cpu_count())
 
             avg_frame_time += (frame_time - avg_frame_time) / frame_count
             global_avg_frame_time += (frame_time - global_avg_frame_time) / global_frame_count
@@ -506,7 +519,17 @@ if performance:
     print('\nGlobal avarage time per frame: {:.2f}'.format(global_avg_frame_time),file=performance_file)
     print('Global avarage FPS: {:.2f}'.format(1/global_avg_frame_time),file=performance_file)
     print('Total time: {:.2f}'.format(end_time-start_time),file=performance_file)
+    print('\n\nAvarage CPU usage: {:.2f}%'.format(np.array(cpu_usage).mean()),file=performance_file)
     performance_file.close()
+
+    ax.clear()
+    ax.plot(cpu_usage, label='Utilizzo CPU (%)')
+    ax.set_ylim(0, 100)
+    ax.set_title('Monitoraggio utilizzo CPU in tempo reale')
+    ax.set_xlabel('Frames')
+    ax.set_ylabel('Utilizzo CPU (%)')
+    ax.legend(loc='lower right')
+    plt.savefig(os.path.join('performances','cpu.png'))
 
 if profile:
     profiler.disable()
