@@ -327,7 +327,7 @@ class SORT:
         self.trackers = []
 
 
-def process_frame(image_path,frame):
+def process_frame(image_path,frame=None):
 
     # Get detections from YOLOv8
     detections = detector.get_detections(image_path)
@@ -369,10 +369,11 @@ def process_frame(image_path,frame):
 def parse_arg():
     parser = argparse.ArgumentParser(description='SORT by Mattia Corrado Placì')
     parser.add_argument('--display', dest='display', action='store_true', help='Display tracker output [False by default]')
-    parser.add_argument('--use_gpu', dest='use_gpu', action='store_true', help='Decide whether to use gpu to compute detections [False by default]')
-    parser.add_argument('--test', dest='test', action='store_true', help='Decide whether to use test set, metrics not available [False by default]')
-    parser.add_argument('--save_output', dest='save_output', action='store_true', help='Decide whether to save the tracker output [False by default]')
+    parser.add_argument('--use_gpu', dest='use_gpu', action='store_true', help='Use gpu to compute detections [False by default]')
+    parser.add_argument('--test', dest='test', action='store_true', help='Use test set [False by default]')
+    parser.add_argument('--save_output', dest='save_output', action='store_true', help='Save the tracker output [False by default]')
     parser.add_argument('--profile', dest='profile', action='store_true', help='Enable profiling [False by default]')
+    parser.add_argument('--performance', dest='performance', action='store_true', help='Enable performance measurement [False by default]')
     parser.add_argument('-max_age', default=1, type=int, help='Maximum number of frames to keep alive a track without associated detections [1 by default]')
     parser.add_argument('-min_hits', default=3, type=int, help='Minimum number of associated detections before track is initialised [3 by default]')
     parser.add_argument('-iou_threshold', default=0.3, type=float, help='Minimum IOU for match [0.3 by default]')
@@ -388,11 +389,20 @@ use_gpu = args.use_gpu
 test = args.test
 save_output = args.save_output
 profile = args.profile
+performance = args.performance
 
-# Profiling
 if profile:
+    # Profiling
     profiler = cProfile.Profile()
     profiler.enable()
+
+if performance:
+    performance_file = open('performance.txt','w')
+
+    # Timer
+    global_frame_count = 0
+    global_avg_frame_time = 0
+    start_time = time.time()
 
 if display:
     # Screen info
@@ -400,8 +410,8 @@ if display:
     screen_width, screen_height = tk.winfo_screenwidth(), tk.winfo_screenheight()
     screen_ratio = screen_width/screen_height
     
-    # Configuration files reader
-    config = configparser.ConfigParser()
+# Configuration files reader
+config = configparser.ConfigParser()
 
 # Load YOLOv8 detector
 detector = YOLOv8Detector(args.detection_score_threshold)
@@ -424,9 +434,16 @@ for seq in os.listdir(path):
 
     seq_path = os.path.join(path,seq,'img1')
 
+    # Image names list
+    image_files = [f for f in os.listdir(seq_path)]
+    image_files.sort()
+    frame_count = 0
+
+    # Get sequence info
+    config.read(os.path.join(path,seq,'seqinfo.ini'))
+
     if display:
-        # Get sequence info
-        config.read(os.path.join(path,seq,'seqinfo.ini'))
+        # Visualization info
         framerate = config.getint('Sequence', 'frameRate')
         width = config.getint('Sequence','imWidth')
         height = config.getint('Sequence','imHeight')
@@ -435,13 +452,12 @@ for seq in os.listdir(path):
         # Keep track of bounding boxes colors
         trackers_color = {}
 
-    # Frames list
-    image_files = [f for f in os.listdir(seq_path)]
-    image_files.sort()
-    frame_count = 0
+        # Read frames
+        frame_list = [cv2.imread(os.path.join(seq_path,image_file)) for image_file in image_files]
 
-    # Read frames
-    frame_list = [cv2.imread(os.path.join(seq_path,image_file)) for image_file in image_files]
+    if performance:
+        seq_num_frames = config.getint('Sequence','seqLength')
+        avg_frame_time = 0
 
     # Open output file
     if save_output:
@@ -454,9 +470,23 @@ for seq in os.listdir(path):
 
         frame_count += 1
 
+        if performance:
+            global_frame_count += 1
+            frame_start_time = time.time()
+
         image_path = os.path.join(seq_path,image_files[x])
 
-        process_frame(image_path,frame_list[x])
+        if display:
+            process_frame(image_path,frame_list[x])
+        else:
+            process_frame(image_path)
+
+        if performance:
+            frame_end_time = time.time()
+            frame_time = frame_end_time - frame_start_time
+
+            avg_frame_time += (frame_time - avg_frame_time) / frame_count
+            global_avg_frame_time += (frame_time - global_avg_frame_time) / global_frame_count
 
     # Reset tracker for new sequence
     mot_tracker.reset()
@@ -466,6 +496,17 @@ for seq in os.listdir(path):
         cv2.destroyAllWindows()
     if save_output:
         output_file.close()
+    if performance:
+        print(seq,'\n\tAvarage time per frame: {:.2f}'%avg_frame_time,'\n\tAvarage FPS: {:.2f}'%(1/avg_frame_time),file=performance_file)
+
+if performance:
+
+    end_time = time.time()
+
+    print('\nGlobal avarage time per frame: {:.2f}'%global_avg_frame_time,file=performance_file)
+    print('Global avarage FPS: {:.2f}'%(1/global_avg_frame_time),file=performance_file)
+    print('Total time: {:.2f}'%(end_time-start_time),file=performance_file)
+    performance_file.close()
 
 if profile:
     profiler.disable()
