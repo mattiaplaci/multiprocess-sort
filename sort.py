@@ -355,7 +355,7 @@ def process_frame(image_path,frame=None):
                 frame = cv2.resize(frame,(screen_width,screen_height))
 
         cv2.imshow(seq,frame)
-        cv2.waitKey(int(1000/framerate))
+        cv2.waitKey(1)
 
     if save_output:
 
@@ -401,7 +401,7 @@ if performance:
 
     # Timer
     global_frame_count = 0
-    global_avg_frame_time = 0
+    global_avg_frame_time = 0.0
     start_time = time.time()
 
 if display:
@@ -457,7 +457,7 @@ for seq in os.listdir(path):
 
     if performance:
         seq_num_frames = config.getint('Sequence','seqLength')
-        avg_frame_time = 0
+        avg_frame_time = 0.0
 
     # Open output file
     if save_output:
@@ -497,15 +497,15 @@ for seq in os.listdir(path):
     if save_output:
         output_file.close()
     if performance:
-        print(seq,'\n\tAvarage time per frame: {:.2f}'%avg_frame_time,'\n\tAvarage FPS: {:.2f}'%(1/avg_frame_time),file=performance_file)
+        print(seq+'\n\tAvarage time per frame: {:.2f}'.format(avg_frame_time),'\n\tAvarage FPS: {:.2f}'.format(1/avg_frame_time),file=performance_file)
 
 if performance:
 
     end_time = time.time()
 
-    print('\nGlobal avarage time per frame: {:.2f}'%global_avg_frame_time,file=performance_file)
-    print('Global avarage FPS: {:.2f}'%(1/global_avg_frame_time),file=performance_file)
-    print('Total time: {:.2f}'%(end_time-start_time),file=performance_file)
+    print('\nGlobal avarage time per frame: {:.2f}'.format(global_avg_frame_time),file=performance_file)
+    print('Global avarage FPS: {:.2f}'.format(1/global_avg_frame_time),file=performance_file)
+    print('Total time: {:.2f}'.format(end_time-start_time),file=performance_file)
     performance_file.close()
 
 if profile:
