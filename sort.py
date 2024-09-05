@@ -8,6 +8,7 @@ import argparse
 import time
 import psutil
 import matplotlib.pyplot as plt
+from pynvml import *
 
 from ultralytics import YOLO
 
@@ -25,13 +26,14 @@ class YOLOv8Detector:
 
         if use_gpu:
             # Use gpu if available
-            self.device = torch.device('cpu' if torch.cuda.is_available() else 'cpu')
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            if self.device == 'cpu':
+                print('GPU not available, using CPU instead...')
         else:
             self.device = torch.device('cpu')
 
         # Pretrained YOLOv8 model
-        self.model = YOLO('yolov8n.pt')
-        self.model.to(self.device)
+        self.model = YOLO('yolov8n.pt').to(self.device)
 
         # Detector parameters
         self.score_threshold = score_threshold
@@ -416,14 +418,29 @@ if profile:
 
 # Performance metrics
 if performance:
-    performance_file = open('performances/performance.txt','w')
+
+    if use_gpu:
+        performance_file_name = 'gpu_performance.txt'
+    else:
+        performance_file_name = 'cpu_performance.txt'
+
+    performance_file = open(os.path.join('performances',performance_file_name),'w')
+
+    # Process PID
+    pid = os.getpid()
 
     # CPU usage
-    pid = os.getpid()
-    process = psutil.Process(pid)
+    process_cpu = psutil.Process(pid)
     fig, ax = plt.subplots()
     cpu_usage = []
-    process.cpu_percent()
+    process_cpu.cpu_percent()
+
+    # GPU usage
+    nvmlInit()
+    handle = nvmlDeviceGetHandleByIndex(0)
+    gpu_name = nvmlDeviceGetName(handle).decode("utf-8")
+    used_memory = 0.0
+    gpu_usage = []
 
     # Timer
     global_frame_count = 0
@@ -439,6 +456,13 @@ detector = YOLOv8Detector(args.detection_score_threshold)
 
 # Create SORT tracker object
 mot_tracker = SORT(max_age=args.max_age, min_hits=args.min_hits, iou_threshold=args.iou_threshold)
+
+# Get gpu memory used
+if use_gpu and performance:
+    for p in nvmlDeviceGetComputeRunningProcesses(handle):
+        if p.pid == pid:
+            used_memory = p.usedGpuMemory / 1024**2
+            break
 
 # Cicle through the train sequences
 for seq in os.listdir(path):
@@ -496,8 +520,10 @@ for seq in os.listdir(path):
             frame_end_time = time.time()
             frame_time = frame_end_time - frame_start_time
 
-            cpu_usage.append(process.cpu_percent()/psutil.cpu_count())
-
+            cpu_usage.append(process_cpu.cpu_percent() / psutil.cpu_count())
+            
+            gpu_usage.append(nvmlDeviceGetUtilizationRates(handle).gpu)
+            
             avg_frame_time += (frame_time - avg_frame_time) / frame_count
             global_avg_frame_time += (frame_time - global_avg_frame_time) / global_frame_count
 
@@ -516,10 +542,15 @@ if performance:
 
     end_time = time.time()
 
+    nvmlShutdown()
+
     print('\nGlobal avarage time per frame: {:.2f}'.format(global_avg_frame_time),file=performance_file)
     print('Global avarage FPS: {:.2f}'.format(1/global_avg_frame_time),file=performance_file)
     print('Total time: {:.2f}'.format(end_time-start_time),file=performance_file)
     print('\n\nAvarage CPU usage: {:.2f}%'.format(np.array(cpu_usage).mean()),file=performance_file)
+    print('\nGPU -',gpu_name+':',file=performance_file)
+    print('\tAvarage GPU usage: {:.2f}%'.format(np.array(gpu_usage).mean()),file=performance_file)
+    print('\tGPU memory used: {:.2f}MiB'.format(used_memory),file=performance_file)
     performance_file.close()
 
     ax.clear()
