@@ -564,5 +564,5 @@ if performance:
 
 if profile:
     profiler.disable()
-    stats = pstats.Stats(profiler).sort_stats('cumulative')
+    stats = pstats.Stats(profiler)
     stats.dump_stats('profile.prof')
