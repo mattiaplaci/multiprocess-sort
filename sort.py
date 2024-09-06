@@ -1,14 +1,5 @@
-import os
-import cv2
 import numpy as np
-import configparser
-import tkinter
 import torch
-import argparse
-import time
-import psutil
-import matplotlib.pyplot as plt
-from pynvml import *
 
 from ultralytics import YOLO
 
@@ -16,13 +7,10 @@ from filterpy.kalman import KalmanFilter
 
 from scipy.optimize import linear_sum_assignment
 
-import cProfile
-import pstats
-
 
 class YOLOv8Detector:
 
-    def __init__(self,score_threshold=0.5):
+    def __init__(self,score_threshold=0.5,use_gpu=False):
 
         if use_gpu:
             # Use gpu if available
@@ -144,9 +132,8 @@ class KalmanBoxTracker:
         self.time_since_update = 0
         self.hit_streak = 0
 
-        if display:
-            # Assign random color to tracker
-            trackers_color[self.id] = (np.random.randint(0,256),np.random.randint(0,256),np.random.randint(0,256))
+        # Assign random color to tracker
+        self.color = (np.random.randint(0,256),np.random.randint(0,256),np.random.randint(0,256))
 
         KalmanBoxTracker.count += 1
 
@@ -193,6 +180,9 @@ class KalmanBoxTracker:
     
     def get_time_since_update(self):
         return self.time_since_update
+    
+    def get_color(self):
+        return self.color
     
 
 def calculate_iou_matrix(boxes1,boxes2):
@@ -273,21 +263,23 @@ class SORT:
 
     def __init__(self, max_age=1, min_hits=3, iou_threshold=0.3):
 
-        self.trackers = []
+        self.trackers = {}
         
         # Tracker parameters
         self.max_age = max_age
         self.min_hits = min_hits
         self.iou_threshold = iou_threshold
 
+        self.frame_count = 0
+
     def update(self,detections):
 
-        global frame_count
+        self.frame_count += 1
         
         # Predict new positions through trackers from previous frame
         predicted_boxes = []
         if len(self.trackers) > 0:
-            for trk in self.trackers:
+            for trk in self.trackers.values():
                 predicted_box = trk.predict()
                 predicted_boxes.append(predicted_box)
             predicted_boxes = np.array(predicted_boxes)
@@ -299,7 +291,7 @@ class SORT:
             detections,predicted_boxes,self.iou_threshold)
 
         # Update matched_indices trackers
-        for t,trk in enumerate(self.trackers):
+        for t,trk in enumerate(self.trackers.values()):
             if t not in unmatched_trackers:
                 det_index = matched_indices[np.where(matched_indices[:,1] == t)[0][0],0]
                 trk.update(detections[det_index])
@@ -307,15 +299,18 @@ class SORT:
         # New trackers for unmatched detections
         for d in unmatched_detections:
             new_tracker = KalmanBoxTracker(detections[d])
-            self.trackers.append(new_tracker)
+            self.trackers[new_tracker.get_id()] = new_tracker
 
         # Filter out old trackers
-        self.trackers = [trk for trk in self.trackers if trk.get_time_since_update() < self.max_age]
+        items_list = list(self.trackers.items())
+        for id,trk in items_list:
+            if trk.get_time_since_update() >= self.max_age:
+                del self.trackers[id]
 
         # Build output
         output = []
-        for trk in self.trackers:
-            if trk.get_hit_streak() >= self.min_hits or frame_count <= self.min_hits:
+        for trk in self.trackers.values():
+            if trk.get_hit_streak() >= self.min_hits or self.frame_count <= self.min_hits:
                 box = trk.get_box()
                 row = np.concatenate(([trk.get_id()],box)).reshape((1,5))
                 output.append(row)
@@ -328,247 +323,5 @@ class SORT:
 
     # Reset tracker status for new sequences
     def reset(self):
-        self.trackers = []
-
-
-def process_frame(image_path):
-
-    # Get detections from YOLOv8
-    detections = detector.get_detections(image_path)
-
-    # Update trackers state
-    output = mot_tracker.update(detections)
-
-    # Display results frame by frame
-    if display:
-
-        frame = cv2.imread(os.path.join(image_path)) 
-
-        # Drawing bounding boxes
-        for o in output:
-            id, x1, y1, x2, y2 = int(o[0]), int(o[1]), int(o[2]), int(o[3]), int(o[4])
-            color = trackers_color[id]
-            cv2.rectangle(frame, (x1,y1), (x2,y2), color, 2)
-            cv2.putText(frame, f'ID: {id}', (x1, y1-5), cv2.FONT_ITALIC, 0.6, color, 2)
-
-        # Adjust visualization in case of screen not big enough
-        if width > screen_width or height > screen_height:
-            if ratio > screen_ratio:
-                frame = cv2.resize(frame,(screen_width,int(screen_width/ratio)))
-            elif ratio < screen_ratio:
-                frame = cv2.resize(frame,(int(screen_height*ratio),screen_height))
-            else:
-                frame = cv2.resize(frame,(screen_width,screen_height))
-
-        cv2.imshow(seq,frame)
-        cv2.waitKey(1)
-
-    if save_output:
-
-        for o in output:
-            id, x1, y1, x2, y2 = int(o[0]), o[1], o[2], o[3], o[4]
-            print('%d,%d,%.2f,%.2f,%.2f,%.2f,1,-1,-1,-1'%(
-                frame_count,id,x1,y1,x2-x1,y2-y1), file=output_file)
-
-
-# Parse script arguments
-def parse_arg():
-    parser = argparse.ArgumentParser(description='SORT by Mattia Corrado Placì')
-    parser.add_argument('--display', dest='display', action='store_true', help='Display tracker output [False by default]')
-    parser.add_argument('--use_gpu', dest='use_gpu', action='store_true', help='Use gpu to compute detections [False by default]')
-    parser.add_argument('--test', dest='test', action='store_true', help='Use test set [False by default]')
-    parser.add_argument('--save_output', dest='save_output', action='store_true', help='Save the tracker output [False by default]')
-    parser.add_argument('--profile', dest='profile', action='store_true', help='Enable profiling [False by default]')
-    parser.add_argument('--performance', dest='performance', action='store_true', help='Enable performance measurement [False by default]')
-    parser.add_argument('-max_age', default=1, type=int, help='Maximum number of frames to keep alive a track without associated detections [1 by default]')
-    parser.add_argument('-min_hits', default=3, type=int, help='Minimum number of associated detections before track is initialised [3 by default]')
-    parser.add_argument('-iou_threshold', default=0.3, type=float, help='Minimum IOU for match [0.3 by default]')
-    parser.add_argument('-detection_score_threshold', default=0.5, type=float, help='Minimum score to consider detection [0.5 by default]')
-    args = parser.parse_args()
-    return args
-
-
-# Script arguments
-args = parse_arg()
-display = args.display
-use_gpu = args.use_gpu
-test = args.test
-save_output = args.save_output
-profile = args.profile
-performance = args.performance
-
-if display:
-    # Screen info
-    tk = tkinter.Tk()
-    screen_width, screen_height = tk.winfo_screenwidth(), tk.winfo_screenheight()
-    screen_ratio = screen_width/screen_height
-
-# Dataset path
-if test:
-    path = os.path.dirname('data/test/')
-else:
-    path = os.path.dirname('data/train/')
-
-# Create output directory
-if save_output and not os.path.exists('output'):
-    os.makedirs('output')
-
-# Profiling
-if profile:
-    profiler = cProfile.Profile()
-    profiler.enable()
-
-# Performance metrics
-if performance:
-
-    if use_gpu:
-        performance_file_name = 'gpu_performance.txt'
-    else:
-        performance_file_name = 'cpu_performance.txt'
-
-    performance_file = open(os.path.join('performances',performance_file_name),'w')
-
-    # Process PID
-    pid = os.getpid()
-    process = psutil.Process(pid)
-
-    # CPU usage
-    cpu_usage = []
-    process.cpu_percent()
-
-    # Memory usage
-    fig, ax = plt.subplots()
-    mem_usage = []
-
-    # GPU usage
-    nvmlInit()
-    handle = nvmlDeviceGetHandleByIndex(0)
-    gpu_name = nvmlDeviceGetName(handle).decode("utf-8")
-    used_memory = 0.0
-    gpu_usage = []
-
-    # Timer
-    global_frame_count = 0
-    global_avg_frame_time = 0.0
-    start_time = time.time()
-
-
-# Configuration files reader
-config = configparser.ConfigParser()
-
-# Load YOLOv8 detector
-detector = YOLOv8Detector(args.detection_score_threshold)
-
-# Create SORT tracker object
-mot_tracker = SORT(max_age=args.max_age, min_hits=args.min_hits, iou_threshold=args.iou_threshold)
-
-# Get gpu memory used
-if use_gpu and performance:
-    for p in nvmlDeviceGetComputeRunningProcesses(handle):
-        if p.pid == pid:
-            used_memory = p.usedGpuMemory / 1024**2
-            break
-
-# Cicle through the train sequences
-for seq in os.listdir(path):
-
-    print(seq+': ','Processing...')
-
-    seq_path = os.path.join(path,seq,'img1')
-
-    # Image names list
-    image_files = [f for f in os.listdir(seq_path)]
-    image_files.sort()
-    frame_count = 0
-
-    # Get sequence info
-    config.read(os.path.join(path,seq,'seqinfo.ini'))
-
-    if display:
-        # Visualization info
-        framerate = config.getint('Sequence', 'frameRate')
-        width = config.getint('Sequence','imWidth')
-        height = config.getint('Sequence','imHeight')
-        ratio = width/height
-
-        # Keep track of bounding boxes colors
-        trackers_color = {}
-    
-    # Open output file
-    if save_output:
-        output_file = open(os.path.join('output','%s.txt'%(seq)),'w')
-
-    if performance:
-        seq_num_frames = config.getint('Sequence','seqLength')
-        avg_frame_time = 0.0
-
-    # Cicle through sequence's frames
-    for x in range(len(image_files)):
-
-        frame_count += 1
-
-        # Initialize frame timer
-        if performance:
-            global_frame_count += 1
-            frame_start_time = time.time()
-
-        image_path = os.path.join(seq_path,image_files[x])
-
-        process_frame(image_path)
-
-        if performance:
-            frame_end_time = time.time()
-            frame_time = frame_end_time - frame_start_time
-
-            cpu_usage.append(process.cpu_percent() / psutil.cpu_count())
-
-            mem_usage.append(process.memory_info().rss / 1024**2)
-            
-            gpu_usage.append(nvmlDeviceGetUtilizationRates(handle).gpu)
-            
-            avg_frame_time += (frame_time - avg_frame_time) / frame_count
-            global_avg_frame_time += (frame_time - global_avg_frame_time) / global_frame_count
-
-    # Reset tracker for new sequence
-    mot_tracker.reset()
-    KalmanBoxTracker.count = 0
-
-    if display:
-        cv2.destroyAllWindows()
-    if save_output:
-        output_file.close()
-    if performance:
-        print(seq+'\n\tAvarage time per frame: {:.2f}'.format(avg_frame_time),'\n\tAvarage FPS: {:.2f}'.format(1/avg_frame_time),file=performance_file)
-
-# Save performance measurement
-if performance:
-
-    end_time = time.time()
-
-    nvmlShutdown()
-
-    print('\nGlobal avarage time per frame: {:.2f}'.format(global_avg_frame_time),file=performance_file)
-    print('Global avarage FPS: {:.2f}'.format(1/global_avg_frame_time),file=performance_file)
-    print('Total time: {:.2f}'.format(end_time-start_time),file=performance_file)
-    print('\n\nAvarage CPU usage: {:.2f}%'.format(np.array(cpu_usage).mean()),file=performance_file)
-    print('\nAvarage memory usage: {:.2f} MiB'.format(np.array(mem_usage).mean()),file=performance_file)
-    print('\nGPU -',gpu_name+':',file=performance_file)
-    print('\tAvarage GPU usage: {:.2f}%'.format(np.array(gpu_usage).mean()),file=performance_file)
-    print('\tGPU memory used: {:.2f} MiB'.format(used_memory),file=performance_file)
-    performance_file.close()
-
-    ax.clear()
-    ax.plot(mem_usage, label='Utilizzo memoria (MiB)')
-    ax.set_title('Monitoraggio utilizzo memoria utilizzata in tempo reale')
-    ax.set_xlabel('Frames')
-    ax.set_ylabel('Utilizzo memoria (MiB)')
-    ax.legend(loc='lower right')
-    if use_gpu:
-        plt.savefig(os.path.join('performances','memory_using_gpu.png'))
-    else:
-        plt.savefig(os.path.join('performances','memory_using_cpu.png'))
-
-if profile:
-    profiler.disable()
-    stats = pstats.Stats(profiler)
-    stats.dump_stats('profile.prof')
+        self.trackers = {}
+        self.frame_count = 0
