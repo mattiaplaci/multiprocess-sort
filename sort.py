@@ -9,7 +9,6 @@ import time
 import psutil
 import matplotlib.pyplot as plt
 from pynvml import *
-import gc
 
 from ultralytics import YOLO
 
@@ -508,6 +507,7 @@ for seq in os.listdir(path):
 
         frame_count += 1
 
+        # Initialize frame timer
         if performance:
             global_frame_count += 1
             frame_start_time = time.time()
@@ -540,6 +540,7 @@ for seq in os.listdir(path):
     if performance:
         print(seq+'\n\tAvarage time per frame: {:.2f}'.format(avg_frame_time),'\n\tAvarage FPS: {:.2f}'.format(1/avg_frame_time),file=performance_file)
 
+# Save performance measurement
 if performance:
 
     end_time = time.time()
