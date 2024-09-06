@@ -166,7 +166,7 @@ class PerformanceMeter:
 
 def process_frame(image_path,displayer=None):
 
-    detections = detector.get_detections()
+    detections = detector.get_detections(image_path)
 
     # Update trackers state
     output = mot_tracker.update(detections)
