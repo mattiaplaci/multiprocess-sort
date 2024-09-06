@@ -145,14 +145,22 @@ class PerformanceMeter:
 
         nvmlShutdown()
 
-        print('\nGlobal avarage time per frame: {:.2f}'.format(self.global_avg_frame_time),file=self.performance_file)
-        print('Global avarage FPS: {:.2f}'.format(1/self.global_avg_frame_time),file=self.performance_file)
-        print('Total time: {:.2f}'.format(end_time-self.start_time),file=self.performance_file)
-        print('\n\nAvarage CPU usage: {:.2f}%'.format(np.array(self.cpu_usage).mean()),file=self.performance_file)
-        print('\nAvarage memory usage: {:.2f} MiB'.format(np.array(self.mem_usage).mean()),file=self.performance_file)
-        print('\nGPU -',self.gpu_name+':',file=self.performance_file)
-        print('\tAvarage GPU usage: {:.2f}%'.format(np.array(self.gpu_usage).mean()),file=self.performance_file)
-        print('\tGPU memory used: {:.2f} MiB'.format(self.used_gpu_memory),file=self.performance_file)
+        print('\nGlobal avarage time per frame: {:.2f}'.format(self.global_avg_frame_time),
+              file=self.performance_file)
+        print('Global avarage FPS: {:.2f}'.format(1/self.global_avg_frame_time),
+              file=self.performance_file)
+        print('Total time: {:.2f}'.format(end_time-self.start_time),
+              file=self.performance_file)
+        print('\n\nAvarage CPU usage: {:.2f}%'.format(np.array(self.cpu_usage).mean()),
+              file=self.performance_file)
+        print('\nAvarage memory usage: {:.2f} MiB'.format(np.array(self.mem_usage).mean()),
+              file=self.performance_file)
+        print('\nGPU -',self.gpu_name+':',
+              file=self.performance_file)
+        print('\tAvarage GPU usage: {:.2f}%'.format(np.array(self.gpu_usage).mean()),
+              file=self.performance_file)
+        print('\tGPU memory used: {:.2f} MiB'.format(self.used_gpu_memory),
+              file=self.performance_file)
         self.performance_file.close()
 
         self.ax.clear()
@@ -169,22 +177,32 @@ class PerformanceMeter:
 # Parse script arguments
 def parse_arg():
     parser = argparse.ArgumentParser(description='SORT by Mattia Corrado Placì')
-    parser.add_argument('--display', dest='display', action='store_true', help='Display tracker output [False by default]')
-    parser.add_argument('--use_gpu', dest='use_gpu', action='store_true', help='Use gpu to compute detections [False by default]')
-    parser.add_argument('--test', dest='test', action='store_true', help='Use test set [False by default]')
-    parser.add_argument('--save_output', dest='save_output', action='store_true', help='Save the tracker output [False by default]')
-    parser.add_argument('--profile', dest='profile', action='store_true', help='Enable profiling [False by default]')
-    parser.add_argument('--performance', dest='performance', action='store_true', help='Enable performance measurement [False by default]')
-    parser.add_argument('-max_age', default=1, type=int, help='Maximum number of frames to keep alive a track without associated detections [1 by default]')
-    parser.add_argument('-min_hits', default=3, type=int, help='Minimum number of associated detections before track is initialised [3 by default]')
-    parser.add_argument('-iou_threshold', default=0.3, type=float, help='Minimum IOU for match [0.3 by default]')
-    parser.add_argument('-detection_score_threshold', default=0.5, type=float, help='Minimum score to consider detection [0.5 by default]')
+    parser.add_argument('--display', dest='display', action='store_true',
+                        help='Display tracker output [False by default]')
+    parser.add_argument('--use_gpu', dest='use_gpu', action='store_true',
+                        help='Use gpu to compute detections [False by default]')
+    parser.add_argument('--test', dest='test', action='store_true',
+                        help='Use test set [False by default]')
+    parser.add_argument('--save_output', dest='save_output', action='store_true',
+                        help='Save the tracker output [False by default]')
+    parser.add_argument('--profile', dest='profile', action='store_true',
+                        help='Enable profiling [False by default]')
+    parser.add_argument('--performance', dest='performance', action='store_true',
+                        help='Enable performance measurement [False by default]')
+    parser.add_argument('-max_age', default=1, type=int,
+                        help='Maximum number of frames to keep alive a track without associated detections [1 by default]')
+    parser.add_argument('-min_hits', default=3, type=int,
+                        help='Minimum number of associated detections before track is initialised [3 by default]')
+    parser.add_argument('-iou_threshold', default=0.3, type=float,
+                        help='Minimum IOU for match [0.3 by default]')
+    parser.add_argument('-detection_score_threshold', default=0.5, type=float,
+                        help='Minimum score to consider detection [0.5 by default]')
     args = parser.parse_args()
     return args
 
 
 def detection_producer(detector,input_queue,output_queue):
-
+    print('SONO IL PRIMO PRODUCER')
     while True:
 
         frame_id, image_path = input_queue.get()
@@ -196,7 +214,34 @@ def detection_producer(detector,input_queue,output_queue):
         output_queue.put((frame_id,detections))
 
 
-NUM_PROCESSES = mp.cpu_count()
+def producers_coordinator(seq_path,image_files,detector,input_queue,output_queue):
+    
+    child_processes = []
+    for _ in range(NUM_PRODUCERS):
+        p = mp.Process(target=detection_producer,
+                       args=(detector,input_queue,output_queue))
+        p.start()
+        child_processes.append(p)
+
+    frame_count = 0
+
+    for image_file in image_files:
+
+        frame_count += 1
+
+        image_path = os.path.join(seq_path,image_file)
+        
+        input_queue.put((frame_count,image_path))
+
+    input_queue.put((-1,None))
+    
+    for p in child_processes:
+        p.join()
+    print('sono il coordinatore')
+    output_queue.put((-1,None))
+
+
+NUM_PRODUCERS = mp.cpu_count()
 
 # Script arguments
 args = parse_arg()
@@ -214,7 +259,9 @@ config = configparser.ConfigParser()
 detector = sort.YOLOv8Detector(args.detection_score_threshold,use_gpu)
 
 # Create SORT tracker object
-mot_tracker = sort.SORT(max_age=args.max_age, min_hits=args.min_hits, iou_threshold=args.iou_threshold)
+mot_tracker = sort.SORT(max_age=args.max_age,
+                        min_hits=args.min_hits,
+                        iou_threshold=args.iou_threshold)
 
 # Input and output queues
 input_queue = mp.Queue()
@@ -267,40 +314,42 @@ for seq in os.listdir(path):
     if performance:
         performance_meter.new_sequence_measurement(seq)
 
-    # Create child processes
-    child_processes = []
-    for _ in range(NUM_PROCESSES):
-        p = mp.Process(target=detection_producer, args=(detector,input_queue,output_queue))
-        p.start()
-        child_processes.append(p)
-    detections_buffer = []
+    ## Initialize frame timer
+    #if performance:                                # CHANGE METRICS
+    #    performance_meter.start_frame_measure()
+
+    coordinator_process = mp.Process(target=producers_coordinator,
+                                     args=(seq_path,
+                                           image_files,
+                                           detector,
+                                           input_queue,
+                                           output_queue))
+    coordinator_process.start()
+
+    detections_buffer = {}
 
     # Cicle through sequence's frames
-    for image_file in image_files:
+    while True:
 
         frame_count += 1
 
-        # Initialize frame timer
-        if performance:
-            performance_meter.start_frame_measure()
-
-        image_path = os.path.join(seq_path,image_file)
-
-        input_queue.put((frame_count,image_path))
-
-        frame_id, detections = output_queue.get()
-
-        while frame_id != frame_count:
-
-            detections_buffer.append((frame_id,detections))
-
+        # Get frame from child processes
+        if frame_count in detections_buffer.keys():
+            detections = detections_buffer.pop(frame_count)
+        else:
             frame_id, detections = output_queue.get()
+            if frame_id == -1:
+                break
+            while frame_id != frame_count:
+                detections_buffer[frame_id] = detections
+                frame_id, detections = output_queue.get()
 
         # Update trackers state
         output = mot_tracker.update(detections)
 
         # Display results frame by frame
         if display:
+            image_path = os.path.join(seq_path,image_files[frame_id-1])
             displayer.show(image_path,output)
 
         if save_output:
@@ -309,8 +358,8 @@ for seq in os.listdir(path):
                 print('%d,%d,%.2f,%.2f,%.2f,%.2f,1,-1,-1,-1'%(
                     frame_count,id,x1,y1,x2-x1,y2-y1), file=output_file)
 
-        if performance:
-            performance_meter.end_frame_measure()
+    #if performance:
+    #    performance_meter.end_frame_measure()   CHANGE METRICS
 
     # Reset tracker for new sequence
     mot_tracker.reset()
