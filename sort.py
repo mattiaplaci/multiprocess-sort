@@ -9,6 +9,7 @@ import time
 import psutil
 import matplotlib.pyplot as plt
 from pynvml import *
+import gc
 
 from ultralytics import YOLO
 
@@ -331,7 +332,7 @@ class SORT:
         self.trackers = []
 
 
-def process_frame(image_path,frame=None):
+def process_frame(image_path):
 
     # Get detections from YOLOv8
     detections = detector.get_detections(image_path)
@@ -341,6 +342,8 @@ def process_frame(image_path,frame=None):
 
     # Display results frame by frame
     if display:
+
+        frame = cv2.imread(os.path.join(image_path)) 
 
         # Drawing bounding boxes
         for o in output:
@@ -428,12 +431,15 @@ if performance:
 
     # Process PID
     pid = os.getpid()
+    process = psutil.Process(pid)
 
     # CPU usage
-    process_cpu = psutil.Process(pid)
-    fig, ax = plt.subplots()
     cpu_usage = []
-    process_cpu.cpu_percent()
+    process.cpu_percent()
+
+    # Memory usage
+    fig, ax = plt.subplots()
+    mem_usage = []
 
     # GPU usage
     nvmlInit()
@@ -488,9 +494,6 @@ for seq in os.listdir(path):
 
         # Keep track of bounding boxes colors
         trackers_color = {}
-
-        # Read frames
-        frame_list = [cv2.imread(os.path.join(seq_path,image_file)) for image_file in image_files]
     
     # Open output file
     if save_output:
@@ -511,16 +514,15 @@ for seq in os.listdir(path):
 
         image_path = os.path.join(seq_path,image_files[x])
 
-        if display:
-            process_frame(image_path,frame_list[x])
-        else:
-            process_frame(image_path)
+        process_frame(image_path)
 
         if performance:
             frame_end_time = time.time()
             frame_time = frame_end_time - frame_start_time
 
-            cpu_usage.append(process_cpu.cpu_percent() / psutil.cpu_count())
+            cpu_usage.append(process.cpu_percent() / psutil.cpu_count())
+
+            mem_usage.append(process.memory_info().rss / 1024**2)
             
             gpu_usage.append(nvmlDeviceGetUtilizationRates(handle).gpu)
             
@@ -548,19 +550,22 @@ if performance:
     print('Global avarage FPS: {:.2f}'.format(1/global_avg_frame_time),file=performance_file)
     print('Total time: {:.2f}'.format(end_time-start_time),file=performance_file)
     print('\n\nAvarage CPU usage: {:.2f}%'.format(np.array(cpu_usage).mean()),file=performance_file)
+    print('\nAvarage memory usage: {:.2f} MiB'.format(np.array(mem_usage).mean()),file=performance_file)
     print('\nGPU -',gpu_name+':',file=performance_file)
     print('\tAvarage GPU usage: {:.2f}%'.format(np.array(gpu_usage).mean()),file=performance_file)
-    print('\tGPU memory used: {:.2f}MiB'.format(used_memory),file=performance_file)
+    print('\tGPU memory used: {:.2f} MiB'.format(used_memory),file=performance_file)
     performance_file.close()
 
     ax.clear()
-    ax.plot(cpu_usage, label='Utilizzo CPU (%)')
-    ax.set_ylim(0, 100)
-    ax.set_title('Monitoraggio utilizzo CPU in tempo reale')
+    ax.plot(mem_usage, label='Utilizzo memoria (MiB)')
+    ax.set_title('Monitoraggio utilizzo memoria utilizzata in tempo reale')
     ax.set_xlabel('Frames')
-    ax.set_ylabel('Utilizzo CPU (%)')
+    ax.set_ylabel('Utilizzo memoria (MiB)')
     ax.legend(loc='lower right')
-    plt.savefig(os.path.join('performances','cpu.png'))
+    if use_gpu:
+        plt.savefig(os.path.join('performances','memory_using_gpu.png'))
+    else:
+        plt.savefig(os.path.join('performances','memory_using_cpu.png'))
 
 if profile:
     profiler.disable()
