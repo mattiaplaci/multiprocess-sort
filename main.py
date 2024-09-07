@@ -8,6 +8,7 @@ import argparse
 import sort
 
 import multiprocessing as mp
+import threading
 
 import time
 import psutil
@@ -201,8 +202,10 @@ def parse_arg():
     return args
 
 
-def detection_producer(detector,input_queue,output_queue):
-    print('SONO IL PRIMO PRODUCER')
+def detection_producer(detection_score_threshold,use_gpu,input_queue,output_queue):
+    
+    detector = sort.YOLOv8Detector(detection_score_threshold,use_gpu)
+
     while True:
 
         frame_id, image_path = input_queue.get()
@@ -214,12 +217,12 @@ def detection_producer(detector,input_queue,output_queue):
         output_queue.put((frame_id,detections))
 
 
-def producers_coordinator(seq_path,image_files,detector,input_queue,output_queue):
+def producers_coordinator(seq_path,image_files,detection_score_threshold,use_gpu,input_queue,output_queue):
     
     child_processes = []
     for _ in range(NUM_PRODUCERS):
         p = mp.Process(target=detection_producer,
-                       args=(detector,input_queue,output_queue))
+                       args=(detection_score_threshold,use_gpu,input_queue,output_queue))
         p.start()
         child_processes.append(p)
 
@@ -233,15 +236,16 @@ def producers_coordinator(seq_path,image_files,detector,input_queue,output_queue
         
         input_queue.put((frame_count,image_path))
 
-    input_queue.put((-1,None))
+    for _ in range(NUM_PRODUCERS):
+        input_queue.put((-1,None))
     
     for p in child_processes:
         p.join()
-    print('sono il coordinatore')
+
     output_queue.put((-1,None))
 
 
-NUM_PRODUCERS = mp.cpu_count()
+NUM_PRODUCERS = 4
 
 # Script arguments
 args = parse_arg()
@@ -256,7 +260,7 @@ performance = args.performance
 config = configparser.ConfigParser()
 
 # Load YOLOv8 detector
-detector = sort.YOLOv8Detector(args.detection_score_threshold,use_gpu)
+#detector = sort.YOLOv8Detector(args.detection_score_threshold,use_gpu)
 
 # Create SORT tracker object
 mot_tracker = sort.SORT(max_age=args.max_age,
@@ -318,14 +322,23 @@ for seq in os.listdir(path):
     #if performance:                                # CHANGE METRICS
     #    performance_meter.start_frame_measure()
 
-    coordinator_process = mp.Process(target=producers_coordinator,
-                                     args=(seq_path,
-                                           image_files,
-                                           detector,
-                                           input_queue,
-                                           output_queue))
-    coordinator_process.start()
+    #coordinator_process = mp.Process(target=producers_coordinator,
+    #                                 args=(seq_path,
+    #                                       image_files,
+    #                                       args.detection_score_threshold,
+    #                                       use_gpu,
+    #                                       input_queue,
+    #                                       output_queue))
+    #coordinator_process.start()
 
+    cooridinator_thread = threading.Thread(target=producers_coordinator,
+                                           args=(seq_path,
+                                                 image_files,
+                                                 args.detection_score_threshold,
+                                                 use_gpu,
+                                                 input_queue,
+                                                 output_queue))
+    cooridinator_thread.start()
     detections_buffer = {}
 
     # Cicle through sequence's frames
