@@ -71,7 +71,18 @@ class Displayer:
         self.height = 0
         self.ratio = 0.0
 
-class PerformanceMeter:
+def memory_measurement(performance_manager):
+
+    while True:
+
+        if performance_manager.stop_thread:
+            break
+
+        performance_manager.measure_memory()
+
+        time.sleep(1)
+
+class PerformanceManager:
 
     def __init__(self,use_gpu=False):
 
@@ -86,6 +97,10 @@ class PerformanceMeter:
 
         # Process PID
         self.process = psutil.Process(os.getpid())
+        self.children = []
+
+
+    def resources_init(self):
 
         # CPU usage
         self.cpu_usage = []
@@ -94,6 +109,10 @@ class PerformanceMeter:
         # Memory usage
         _, self.ax = plt.subplots()
         self.mem_usage = []
+        self.stop_thread = False
+
+        self.mem_thread = threading.Thread(target=memory_measurement,
+                                           args=[self])
 
         # GPU usage
         nvmlInit()
@@ -102,38 +121,55 @@ class PerformanceMeter:
         self.used_gpu_memory = 0.0
         self.gpu_usage = []
         for p in nvmlDeviceGetComputeRunningProcesses(self.handle):
-            if p.pid == os.getpid():
-                self.used_gpu_memory = p.usedGpuMemory / 1024**2
-                break
+            if p.pid == os.getpid() or p.pid in self.children:
+                self.used_gpu_memory += p.usedGpuMemory / 1024**2
 
+        self.mem_thread.start()
+
+    def set_children(self,children):
+        self.children = children
+
+    def get_resources(self):
+
+        cpu = self.process.cpu_percent() / psutil.cpu_count()
+        for p in self.children:
+            if p.is_running():
+                cpu += p.cpu_percent() / psutil.cpu_count()
+        self.cpu_usage.append(cpu)
+
+        self.gpu_usage.append(nvmlDeviceGetUtilizationRates(self.handle).gpu)
+
+    def measure_memory(self):
+        mem = self.process.memory_info().rss / 1024**2
+        for p in self.children:
+            if p.is_running():
+                mem += p.memory_info().rss / 1024**2
+        self.mem_usage.append(mem)
+
+
+    def start_global_measurement(self):
         # Timer
         self.global_frame_count = 0
         self.global_avg_frame_time = 0.0
         self.start_time = time.time()
 
-    def new_sequence_measurement(self,seq_name):
-        self.seq_name = seq_name
+    def new_sequence_timer(self,config):
+        self.seq_name = config.get('Sequence','name')
+        self.tot_frames = config.getint('Sequence','seqLength')
         self.avg_frame_time = 0.0
-        self.frame_start_time = -1
-        self.frame_count = 0
+        self.seq_start_time = -1 
 
-    def start_frame_measure(self):
-        self.frame_count += 1
-        self.global_frame_count += 1
-        self.frame_start_time = time.time()
+    def start_sequence_timer(self):
+        self.seq_start_time = time.time()
     
-    def end_frame_measure(self):
-        frame_end_time = time.time()
-        frame_time = frame_end_time - self.frame_start_time
+    def end_sequence_timer(self):
+        seq_end_time = time.time()
+        self.global_frame_count += self.tot_frames
+        seq_time = seq_end_time - self.seq_start_time
 
-        self.cpu_usage.append(self.process.cpu_percent() / psutil.cpu_count())
+        self.avg_frame_time += seq_time / self.tot_frames
+        self.global_avg_frame_time += seq_time
 
-        self.mem_usage.append(self.process.memory_info().rss / 1024**2)
-            
-        self.gpu_usage.append(nvmlDeviceGetUtilizationRates(self.handle).gpu)
-            
-        self.avg_frame_time += (frame_time - self.avg_frame_time) / self.frame_count
-        self.global_avg_frame_time += (frame_time - self.global_avg_frame_time) / self.global_frame_count
 
     def save_seq_measurement(self):
         print(self.seq_name+
@@ -143,8 +179,12 @@ class PerformanceMeter:
     def save_global_measurement(self):
 
         end_time = time.time()
+        self.global_avg_frame_time /= self.global_frame_count
+        self.stop_thread = True
 
         nvmlShutdown()
+
+        self.mem_thread.join()
 
         print('\nGlobal avarage time per frame: {:.2f}'.format(self.global_avg_frame_time),
               file=self.performance_file)
@@ -167,7 +207,7 @@ class PerformanceMeter:
         self.ax.clear()
         self.ax.plot(self.mem_usage, label='Utilizzo memoria (MiB)')
         self.ax.set_title('Monitoraggio utilizzo memoria utilizzata in tempo reale')
-        self.ax.set_xlabel('Frames')
+        self.ax.set_xlabel('Time (s)')
         self.ax.set_ylabel('Utilizzo memoria (MiB)')
         self.ax.legend(loc='lower right')
         if self.use_gpu:
@@ -190,6 +230,8 @@ def parse_arg():
                         help='Enable profiling [False by default]')
     parser.add_argument('--performance', dest='performance', action='store_true',
                         help='Enable performance measurement [False by default]')
+    parser.add_argument('-num_producers', default=2, type=int,
+                        help='Number of processes computing detections in parallel')
     parser.add_argument('-max_age', default=1, type=int,
                         help='Maximum number of frames to keep alive a track without associated detections [1 by default]')
     parser.add_argument('-min_hits', default=3, type=int,
@@ -217,14 +259,25 @@ def detection_producer(detection_score_threshold,use_gpu,input_queue,output_queu
         output_queue.put((frame_id,detections))
 
 
-def producers_coordinator(seq_path,image_files,detection_score_threshold,use_gpu,input_queue,output_queue):
+def producers_coordinator(seq_path,image_files,num_producers,
+                          detection_score_threshold,use_gpu,
+                          input_queue,output_queue,
+                          performance_manager):
     
     child_processes = []
-    for _ in range(NUM_PRODUCERS):
+    perf_children = []
+    for _ in range(num_producers):
+
         p = mp.Process(target=detection_producer,
-                       args=(detection_score_threshold,use_gpu,input_queue,output_queue))
+                       args=(detection_score_threshold,use_gpu,
+                             input_queue,output_queue))
+        
         p.start()
         child_processes.append(p)
+        perf_children.append(psutil.Process(p.pid))
+
+    if performance_manager is not None:
+        performance_manager.set_children(perf_children)
 
     frame_count = 0
 
@@ -236,7 +289,7 @@ def producers_coordinator(seq_path,image_files,detection_score_threshold,use_gpu
         
         input_queue.put((frame_count,image_path))
 
-    for _ in range(NUM_PRODUCERS):
+    for _ in range(num_producers):
         input_queue.put((-1,None))
     
     for p in child_processes:
@@ -244,8 +297,6 @@ def producers_coordinator(seq_path,image_files,detection_score_threshold,use_gpu
 
     output_queue.put((-1,None))
 
-
-NUM_PRODUCERS = 4
 
 # Script arguments
 args = parse_arg()
@@ -255,6 +306,7 @@ test = args.test
 save_output = args.save_output
 profile = args.profile
 performance = args.performance
+num_producers = args.num_producers
 
 # Configuration files reader
 config = configparser.ConfigParser()
@@ -291,7 +343,9 @@ if profile:
 
 # Performance metrics
 if performance:
-    performance_meter = PerformanceMeter(use_gpu)
+    performance_manager = PerformanceManager(use_gpu)
+    performance_manager.resources_init()
+    performance_manager.start_global_measurement()
 
 # Cicle through the train sequences
 for seq in os.listdir(path):
@@ -315,29 +369,21 @@ for seq in os.listdir(path):
     if save_output:
         output_file = open(os.path.join('output','%s.txt'%(seq)),'w')
 
+    # Start sequence measurement
     if performance:
-        performance_meter.new_sequence_measurement(seq)
+        performance_manager.new_sequence_timer(config)
+        performance_manager.start_sequence_timer()
 
-    ## Initialize frame timer
-    #if performance:                                # CHANGE METRICS
-    #    performance_meter.start_frame_measure()
-
-    #coordinator_process = mp.Process(target=producers_coordinator,
-    #                                 args=(seq_path,
-    #                                       image_files,
-    #                                       args.detection_score_threshold,
-    #                                       use_gpu,
-    #                                       input_queue,
-    #                                       output_queue))
-    #coordinator_process.start()
-
+    perf_arg = performance_manager if performance else None
     cooridinator_thread = threading.Thread(target=producers_coordinator,
                                            args=(seq_path,
                                                  image_files,
+                                                 num_producers,
                                                  args.detection_score_threshold,
                                                  use_gpu,
                                                  input_queue,
-                                                 output_queue))
+                                                 output_queue,
+                                                 perf_arg))
     cooridinator_thread.start()
     detections_buffer = {}
 
@@ -370,9 +416,12 @@ for seq in os.listdir(path):
                 id, x1, y1, x2, y2 = int(o[0]), o[1], o[2], o[3], o[4]
                 print('%d,%d,%.2f,%.2f,%.2f,%.2f,1,-1,-1,-1'%(
                     frame_count,id,x1,y1,x2-x1,y2-y1), file=output_file)
+                
+        if performance:
+            performance_manager.get_resources()
 
-    #if performance:
-    #    performance_meter.end_frame_measure()   CHANGE METRICS
+    if performance:
+        performance_manager.end_sequence_timer()
 
     # Reset tracker for new sequence
     mot_tracker.reset()
@@ -383,11 +432,11 @@ for seq in os.listdir(path):
     if save_output:
         output_file.close()
     if performance:
-        performance_meter.save_seq_measurement()
+        performance_manager.save_seq_measurement()
 
 # Save performance measurement
 if performance:
-    performance_meter.save_global_measurement()
+    performance_manager.save_global_measurement()
 
 if profile:
     profiler.disable()
