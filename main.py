@@ -79,6 +79,7 @@ def memory_measurement(performance_manager):
             break
 
         performance_manager.measure_memory()
+        performance_manager.measure_gpu_memory()
 
         time.sleep(1)
 
@@ -98,6 +99,12 @@ class PerformanceManager:
         # Process PID
         self.process = psutil.Process(os.getpid())
         self.children = []
+        self.children_pids = []
+
+
+    def set_children(self,children, children_pids):
+        self.children = children
+        self.children_pids = children_pids
 
 
     def resources_init(self):
@@ -120,14 +127,8 @@ class PerformanceManager:
         self.gpu_name = nvmlDeviceGetName(self.handle).decode("utf-8")
         self.used_gpu_memory = 0.0
         self.gpu_usage = []
-        for p in nvmlDeviceGetComputeRunningProcesses(self.handle):
-            if p.pid == os.getpid() or p.pid in self.children:
-                self.used_gpu_memory += p.usedGpuMemory / 1024**2
 
         self.mem_thread.start()
-
-    def set_children(self,children):
-        self.children = children
 
     def get_resources(self):
 
@@ -145,6 +146,13 @@ class PerformanceManager:
             if p.is_running():
                 mem += p.memory_info().rss / 1024**2
         self.mem_usage.append(mem)
+
+    def measure_gpu_memory(self):
+        gpu = 0.0
+        for p in nvmlDeviceGetComputeRunningProcesses(self.handle):
+            if p.pid in self.children_pids or p.pid == os.getpid():
+                gpu += p.usedGpuMemory / 1024**2
+        self.used_gpu_memory = max(gpu, self.used_gpu_memory)
 
 
     def start_global_measurement(self):
@@ -169,7 +177,6 @@ class PerformanceManager:
 
         self.avg_frame_time += seq_time / self.tot_frames
         self.global_avg_frame_time += seq_time
-
 
     def save_seq_measurement(self):
         print(self.seq_name+
@@ -215,6 +222,7 @@ class PerformanceManager:
         else:
             plt.savefig(os.path.join('performances','memory_using_cpu.png'))
 
+
 # Parse script arguments
 def parse_arg():
     parser = argparse.ArgumentParser(description='SORT by Mattia Corrado Placì')
@@ -246,8 +254,10 @@ def parse_arg():
 
 def detection_producer(detection_score_threshold,use_gpu,input_queue,output_queue):
     
+    # Load YOLOv8 detector
     detector = sort.YOLOv8Detector(detection_score_threshold,use_gpu)
 
+    # Send detection to parent process
     while True:
 
         frame_id, image_path = input_queue.get()
@@ -266,6 +276,7 @@ def producers_coordinator(seq_path,image_files,num_producers,
     
     child_processes = []
     perf_children = []
+    children_pids = []
     for _ in range(num_producers):
 
         p = mp.Process(target=detection_producer,
@@ -275,9 +286,10 @@ def producers_coordinator(seq_path,image_files,num_producers,
         p.start()
         child_processes.append(p)
         perf_children.append(psutil.Process(p.pid))
+        children_pids.append(p.pid)
 
     if performance_manager is not None:
-        performance_manager.set_children(perf_children)
+        performance_manager.set_children(perf_children,children_pids)
 
     frame_count = 0
 
@@ -310,9 +322,6 @@ num_producers = args.num_producers
 
 # Configuration files reader
 config = configparser.ConfigParser()
-
-# Load YOLOv8 detector
-#detector = sort.YOLOv8Detector(args.detection_score_threshold,use_gpu)
 
 # Create SORT tracker object
 mot_tracker = sort.SORT(max_age=args.max_age,
@@ -422,17 +431,15 @@ for seq in os.listdir(path):
 
     if performance:
         performance_manager.end_sequence_timer()
-
-    # Reset tracker for new sequence
-    mot_tracker.reset()
-    sort.KalmanBoxTracker.count = 0
-
+        performance_manager.save_seq_measurement()
     if display:
         displayer.stop()
     if save_output:
         output_file.close()
-    if performance:
-        performance_manager.save_seq_measurement()
+
+    # Reset tracker for new sequence
+    mot_tracker.reset()
+    sort.KalmanBoxTracker.count = 0
 
 # Save performance measurement
 if performance:
