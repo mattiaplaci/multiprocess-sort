@@ -263,7 +263,7 @@ class SORT:
 
     def __init__(self, max_age=1, min_hits=3, iou_threshold=0.3):
 
-        self.trackers = {}
+        self.trackers = []
         
         # Tracker parameters
         self.max_age = max_age
@@ -279,7 +279,7 @@ class SORT:
         # Predict new positions through trackers from previous frame
         predicted_boxes = []
         if len(self.trackers) > 0:
-            for trk in self.trackers.values():
+            for trk in self.trackers:
                 predicted_box = trk.predict()
                 predicted_boxes.append(predicted_box)
             predicted_boxes = np.array(predicted_boxes)
@@ -291,7 +291,7 @@ class SORT:
             detections,predicted_boxes,self.iou_threshold)
 
         # Update matched_indices trackers
-        for t,trk in enumerate(self.trackers.values()):
+        for t,trk in enumerate(self.trackers):
             if t not in unmatched_trackers:
                 det_index = matched_indices[np.where(matched_indices[:,1] == t)[0][0],0]
                 trk.update(detections[det_index])
@@ -299,17 +299,18 @@ class SORT:
         # New trackers for unmatched detections
         for d in unmatched_detections:
             new_tracker = KalmanBoxTracker(detections[d])
-            self.trackers[new_tracker.get_id()] = new_tracker
+            self.trackers.append(new_tracker)
 
         # Filter out old trackers
-        items_list = list(self.trackers.items())
-        for id,trk in items_list:
-            if trk.get_time_since_update() >= self.max_age:
-                del self.trackers[id]
+        new_trackers = []
+        for trk in self.trackers:
+            if trk.get_time_since_update() < self.max_age:
+                new_trackers.append(trk)
+        self.trackers = new_trackers
 
         # Build output
         output = []
-        for trk in self.trackers.values():
+        for trk in self.trackers:
             if trk.get_hit_streak() >= self.min_hits or self.frame_count <= self.min_hits:
                 box = trk.get_box()
                 row = np.concatenate(([trk.get_id()],box)).reshape((1,5))
@@ -323,5 +324,5 @@ class SORT:
 
     # Reset tracker status for new sequences
     def reset(self):
-        self.trackers = {}
+        self.trackers = []
         self.frame_count = 0
