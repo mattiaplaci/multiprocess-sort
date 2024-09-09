@@ -102,9 +102,9 @@ class PerformanceManager:
         self.children_pids = []
 
 
-    def set_children(self,children, children_pids):
-        self.children = children
-        self.children_pids = children_pids
+    def add_child(self, child):
+        self.children.append(child)
+        self.children_pids.append(child.pid)
 
 
     def resources_init(self):
@@ -275,8 +275,6 @@ def producers_coordinator(seq_path,image_files,num_producers,
                           performance_manager):
     
     child_processes = []
-    perf_children = []
-    children_pids = []
     for _ in range(num_producers):
 
         p = mp.Process(target=detection_producer,
@@ -285,11 +283,9 @@ def producers_coordinator(seq_path,image_files,num_producers,
         
         p.start()
         child_processes.append(p)
-        perf_children.append(psutil.Process(p.pid))
-        children_pids.append(p.pid)
 
-    if performance_manager is not None:
-        performance_manager.set_children(perf_children,children_pids)
+        if performance_manager is not None:
+            performance_manager.add_child(psutil.Process(p.pid))
 
     frame_count = 0
 
