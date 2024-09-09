@@ -10,15 +10,14 @@ from scipy.optimize import linear_sum_assignment
 
 class YOLOv8Detector:
 
-    def __init__(self,score_threshold=0.5,use_gpu=False):
+    def __init__(self,score_threshold=0.5):
 
-        if use_gpu:
-            # Use gpu if available
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-            if self.device == 'cpu':
-                print('GPU not available, using CPU instead...')
+        # Use gpu if available
+        if torch.cuda.is_available():
+            self.device = torch.device('cuda')
         else:
             self.device = torch.device('cpu')
+            print('\nWarning: GPU not available\nUsing CPU instead...\n')
 
         # Pretrained YOLOv8 model
         self.model = YOLO('yolov8n.pt').to(self.device)

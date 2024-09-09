@@ -111,16 +111,9 @@ def memory_measurement(performance_manager):
 
 class PerformanceManager:
 
-    def __init__(self,use_gpu=False):
+    def __init__(self):
 
-        self.use_gpu = use_gpu
-
-        if self.use_gpu:
-            performance_file_name = 'gpu_performance.txt'
-        else:
-            performance_file_name = 'cpu_performance.txt'
-
-        self.performance_file = open(os.path.join('performances',performance_file_name),'w')
+        self.performance_file = open(os.path.join('performances','performances.txt'),'w')
 
         # Process PID
         self.process = psutil.Process(os.getpid())
@@ -257,7 +250,4 @@ class PerformanceManager:
         self.ax.set_xlabel('Time (s)')
         self.ax.set_ylabel('Utilizzo memoria (MiB)')
         self.ax.legend(loc='lower right')
-        if self.use_gpu:
-            plt.savefig(os.path.join('performances','memory_using_gpu.png'))
-        else:
-            plt.savefig(os.path.join('performances','memory_using_cpu.png'))
+        plt.savefig(os.path.join('performances','memory_plot.png'))

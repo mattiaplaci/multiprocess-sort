@@ -1,6 +1,7 @@
 import os
 import configparser
 import argparse
+import gc
 
 from sort import *
 from utils import *
@@ -21,8 +22,6 @@ def parse_arg():
     parser = argparse.ArgumentParser(description='SORT by Mattia Corrado Placì')
     parser.add_argument('--display', dest='display', action='store_true',
                         help='Display tracker output [False by default]')
-    parser.add_argument('--use_gpu', dest='use_gpu', action='store_true',
-                        help='Use gpu to compute detections [False by default]')
     parser.add_argument('--test', dest='test', action='store_true',
                         help='Use test set [False by default]')
     parser.add_argument('--save_output', dest='save_output', action='store_true',
@@ -39,43 +38,46 @@ def parse_arg():
                         help='Minimum number of associated detections before track is initialised [3 by default]')
     parser.add_argument('-iou_threshold', default=0.3, type=float,
                         help='Minimum IOU for match [0.3 by default]')
-    parser.add_argument('-detection_score_threshold', default=0.5, type=float,
-                        help='Minimum score to consider detection [0.5 by default]')
     args = parser.parse_args()
     return args
 
 
-def detection_producer(detection_score_threshold,use_gpu,input_queue,output_queue):
+# Producer routine
+def detection_producer(input_queue,output_queue):
+
+    gc.collect()
 
     # Load YOLOv8 detector
-    detector = YOLOv8Detector(detection_score_threshold,use_gpu)
+    detector = YOLOv8Detector()
 
-    # Send detection to parent process
     while True:
 
+        # Get new frame
         frame = input_queue.get()
         frame_id = frame.get_id()
         if frame_id == -1:
             break
         image_path = frame.get_image()
 
+        # Produce detections
         detections = detector.get_detections(image_path)
         frame.set_detections(detections)
 
+        # Send detections
         output_queue.put(frame)
 
 
+# Children processes coordination
 def producers_coordinator(seq_path,image_files,framerate,num_producers,
-                          detection_score_threshold,use_gpu,
                           input_queue,output_queue,
                           performance_manager):
     
+    # Create processes
     child_processes = []
     for _ in range(num_producers):
 
         p = mp.Process(target=detection_producer,
-                       args=(detection_score_threshold,use_gpu,
-                             input_queue,output_queue))
+                       args=(input_queue,output_queue))
         
         p.start()
         child_processes.append(p)
@@ -85,6 +87,7 @@ def producers_coordinator(seq_path,image_files,framerate,num_producers,
 
     frame_count = 0
 
+    # Capture frames
     for image_file in image_files:
 
         frame_count += 1
@@ -97,24 +100,28 @@ def producers_coordinator(seq_path,image_files,framerate,num_producers,
 
         time.sleep(1/framerate)
 
+    # Send every child a stop signal
     stop = Frame(None,-1)
     for _ in range(num_producers):
         input_queue.put(stop)
     
+    # Wait for children
     for p in child_processes:
         p.join()
 
+    # Tell main thread that task is done
     output_queue.put(stop)
 
 
 # Script arguments
 args = parse_arg()
 display = args.display
-use_gpu = args.use_gpu
 test = args.test
 save_output = args.save_output
 profile = args.profile
 performance = args.performance
+
+# Number of children processes
 num_producers = args.num_producers
 
 # Configuration files reader
@@ -122,13 +129,14 @@ config = configparser.ConfigParser()
 
 # Create SORT tracker object
 mot_tracker = SORT(max_age=args.max_age,
-                   min_hits=args.min_hits,
-                   iou_threshold=args.iou_threshold)
+                min_hits=args.min_hits,
+                iou_threshold=args.iou_threshold)
 
 # Input and output queues
 input_queue = mp.Queue()
 output_queue = mp.Queue()
 
+# Object to show outputs
 if display:
     displayer = Displayer()
 
@@ -142,14 +150,14 @@ else:
 if save_output and not os.path.exists('output'):
     os.makedirs('output')
 
-# Profiling
+# Start profiling
 if profile:
     profiler = cProfile.Profile()
     profiler.enable()
 
 # Performance metrics
 if performance:
-    performance_manager = PerformanceManager(use_gpu)
+    performance_manager = PerformanceManager()
     performance_manager.resources_init()
     performance_manager.start_global_measurement()
 
@@ -158,11 +166,14 @@ for seq in os.listdir(path):
 
     print(seq+': ','Processing...')
 
+    # Sequence data path
     seq_path = os.path.join(path,seq,'img1')
 
-    # Image names list
+    # Image files list
     image_files = [f for f in os.listdir(seq_path)]
     image_files.sort()
+
+    # Initialize frame counter
     frame_count = 0
 
     # Get sequence info
@@ -171,9 +182,10 @@ for seq in os.listdir(path):
     # Get sequence framerate
     framerate = config.getint('Sequence','frameRate')
 
+    # Get sequence settings if needed
     if display:
         displayer.get_sequence_visualization_info(config)
-    
+        
     # Open output file
     if save_output:
         output_file = open(os.path.join('output','%s.txt'%(seq)),'w')
@@ -183,17 +195,18 @@ for seq in os.listdir(path):
         performance_manager.new_sequence_timer(config)
         performance_manager.start_sequence_timer()
 
+    gc.disable()
+
+    # New thread to manage children processes
     perf_arg = performance_manager if performance else None
     cooridinator_thread = threading.Thread(target=producers_coordinator,
-                                           args=(seq_path,
-                                                 image_files,
-                                                 framerate,
-                                                 num_producers,
-                                                 args.detection_score_threshold,
-                                                 use_gpu,
-                                                 input_queue,
-                                                 output_queue,
-                                                 perf_arg))
+                                        args=(seq_path,
+                                                image_files,
+                                                framerate,
+                                                num_producers,
+                                                input_queue,
+                                                output_queue,
+                                                perf_arg))
     cooridinator_thread.start()
     frames_buffer = {}
 
@@ -218,6 +231,7 @@ for seq in os.listdir(path):
         # Update trackers state
         output = mot_tracker.update(frame.get_detections())
 
+        # Measurements
         if performance:
             performance_manager.latency_timer(frame.get_timestamp())
             performance_manager.get_resources()
@@ -228,17 +242,24 @@ for seq in os.listdir(path):
             displayer.update_boxes(mot_tracker.trackers)
             displayer.show(image_path,output)
 
+        # Save outputs
         if save_output:
             for o in output:
                 id, x1, y1, x2, y2 = int(o[0]), o[1], o[2], o[3], o[4]
                 print('%d,%d,%.2f,%.2f,%.2f,%.2f,1,-1,-1,-1'%(
                     frame_count,id,x1,y1,x2-x1,y2-y1), file=output_file)
 
+    gc.enable()
+
+    # Stop measurements
     if performance:
         performance_manager.end_sequence_timer()
         performance_manager.save_seq_measurement()
+        
+    # Stop visualization
     if display:
         displayer.stop()
+        
     if save_output:
         output_file.close()
 
@@ -250,6 +271,7 @@ for seq in os.listdir(path):
 if performance:
     performance_manager.save_global_measurement()
 
+# Stop profiling
 if profile:
     profiler.disable()
     stats = pstats.Stats(profiler)
