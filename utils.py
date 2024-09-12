@@ -111,14 +111,21 @@ def memory_measurement(performance_manager):
 
 class PerformanceManager:
 
-    def __init__(self):
+    def __init__(self,save_performance=True):
 
-        self.performance_file = open(os.path.join('performances','performances.txt'),'w')
+        self.save_performance = save_performance
+
+        if self.save_performance:
+            self.performance_file = open(os.path.join('performances','performances.txt'),'w')
 
         # Process PID
         self.process = psutil.Process(os.getpid())
         self.children = []
         self.children_pids = []
+
+        # Performances
+        self.global_performance = []
+        self.sequences_performance = {}
 
 
     def add_child(self, child):
@@ -193,11 +200,21 @@ class PerformanceManager:
         self.seq_latency /= self.tot_frames
         self.global_avg_frame_time += seq_time
 
-    def save_seq_measurement(self):
-        print(self.seq_name+
-              '\n\tAvarage time per frame: {:.2f}'.format(self.avg_frame_time),
-              '\n\tAvarage FPS: {:.2f}'.format(1/self.avg_frame_time),
-              '\n\tAvarage latency: {:.2f}'.format(self.seq_latency),file=self.performance_file)
+    def end_seq_measurement(self):
+        
+        if self.save_performance:
+            print(self.seq_name+
+                  '\n\tAvarage time per frame: {:.2f}'.format(self.avg_frame_time),
+                  '\n\tAvarage FPS: {:.2f}'.format(1/self.avg_frame_time),
+                  '\n\tAvarage latency: {:.2f}'.format(self.seq_latency),
+                  file=self.performance_file)
+        
+        self.sequences_performance[self.seq_name] = []
+        self.sequences_performance[self.seq_name].append(self.avg_frame_time)
+        self.sequences_performance[self.seq_name].append(1/self.avg_frame_time)
+        self.sequences_performance[self.seq_name].append(self.seq_latency)
+            
+        
 
     def latency_timer(self,start):
         end = time.time()
@@ -212,7 +229,7 @@ class PerformanceManager:
         self.avg_latency = 0.0
         self.start_time = time.time()
     
-    def save_global_measurement(self):
+    def end_global_measurement(self):
 
         end_time = time.time()
         self.stop_thread = True
@@ -224,30 +241,45 @@ class PerformanceManager:
 
         self.mem_thread.join()
 
-        print('\nGlobal avarage time per frame: {:.2f}'.format(self.global_avg_frame_time),
-              file=self.performance_file)
-        print('Global avarage FPS: {:.2f}'.format(1/self.global_avg_frame_time),
-              file=self.performance_file)
-        print('Global avarage latency: {:.2f}'.format(self.avg_latency),
-              file=self.performance_file)
-        print('Total time: {:.2f}'.format(end_time-self.start_time),
-              file=self.performance_file)
-        print('\n\nAvarage CPU usage: {:.2f}%'.format(np.array(self.cpu_usage).mean()),
-              file=self.performance_file)
-        print('\nAvarage memory usage: {:.2f} MiB'.format(np.array(self.mem_usage).mean()),
-              file=self.performance_file)
-        print('\nGPU -',self.gpu_name+':',
-              file=self.performance_file)
-        print('\tAvarage GPU usage: {:.2f}%'.format(np.array(self.gpu_usage).mean()),
-              file=self.performance_file)
-        print('\tGPU memory used: {:.2f} MiB'.format(self.used_gpu_memory),
-              file=self.performance_file)
-        self.performance_file.close()
+        if self.save_performance:
 
-        self.ax.clear()
-        self.ax.plot(self.mem_usage, label='Utilizzo memoria (MiB)')
-        self.ax.set_title('Monitoraggio utilizzo memoria utilizzata in tempo reale')
-        self.ax.set_xlabel('Time (s)')
-        self.ax.set_ylabel('Utilizzo memoria (MiB)')
-        self.ax.legend(loc='lower right')
-        plt.savefig(os.path.join('performances','memory_plot.png'))
+            print('\nGlobal avarage time per frame: {:.2f}'.format(self.global_avg_frame_time),
+                  file=self.performance_file)
+            print('Global avarage FPS: {:.2f}'.format(1/self.global_avg_frame_time),
+                  file=self.performance_file)
+            print('Global avarage latency: {:.2f}'.format(self.avg_latency),
+                  file=self.performance_file)
+            print('Total time: {:.2f}'.format(end_time-self.start_time),
+                  file=self.performance_file)
+            print('\n\nAvarage CPU usage: {:.2f}%'.format(np.array(self.cpu_usage).mean()),
+                  file=self.performance_file)
+            print('\nAvarage memory usage: {:.2f} MiB'.format(np.array(self.mem_usage).mean()),
+                  file=self.performance_file)
+            print('\nGPU -',self.gpu_name+':',
+                  file=self.performance_file)
+            print('\tAvarage GPU usage: {:.2f}%'.format(np.array(self.gpu_usage).mean()),
+                  file=self.performance_file)
+            print('\tGPU memory used: {:.2f} MiB'.format(self.used_gpu_memory),
+                  file=self.performance_file)
+            self.performance_file.close()
+
+            self.ax.clear()
+            self.ax.plot(self.mem_usage, label='Utilizzo memoria (MiB)')
+            self.ax.set_title('Monitoraggio utilizzo memoria utilizzata in tempo reale')
+            self.ax.set_xlabel('Time (s)')
+            self.ax.set_ylabel('Utilizzo memoria (MiB)')
+            self.ax.legend(loc='lower right')
+            plt.savefig(os.path.join('performances','memory_plot.png'))
+
+        self.global_performance.append(self.global_avg_frame_time)
+        self.global_performance.append(1/self.global_avg_frame_time)
+        self.global_performance.append(self.avg_latency)
+        self.global_performance.append(end_time-self.start_time)
+        self.global_performance.append(np.array(self.cpu_usage).mean())
+        self.global_performance.append(np.array(self.mem_usage).mean())
+        self.global_performance.append(np.array(self.gpu_usage).mean())
+        self.global_performance.append(self.used_gpu_memory)
+
+        return (self.global_performance, self.sequences_performance)
+
+        
