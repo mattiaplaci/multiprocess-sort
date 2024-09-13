@@ -10,15 +10,14 @@ from scipy.optimize import linear_sum_assignment
 
 class YOLOv8Detector:
 
-    def __init__(self,score_threshold=0.5,use_gpu=False):
+    def __init__(self,score_threshold=0.5):
 
-        if use_gpu:
-            # Use gpu if available
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-            if self.device == 'cpu':
-                print('GPU not available, using CPU instead...')
+        # Use gpu if available
+        if torch.cuda.is_available():
+            self.device = torch.device('cuda')
         else:
             self.device = torch.device('cpu')
+            print('\nWarning: GPU not available\nUsing CPU instead...\n')
 
         # Pretrained YOLOv8 model
         self.model = YOLO('yolov8n.pt').to(self.device)
@@ -263,7 +262,7 @@ class SORT:
 
     def __init__(self, max_age=1, min_hits=3, iou_threshold=0.3):
 
-        self.trackers = {}
+        self.trackers = []
         
         # Tracker parameters
         self.max_age = max_age
@@ -279,7 +278,7 @@ class SORT:
         # Predict new positions through trackers from previous frame
         predicted_boxes = []
         if len(self.trackers) > 0:
-            for trk in self.trackers.values():
+            for trk in self.trackers:
                 predicted_box = trk.predict()
                 predicted_boxes.append(predicted_box)
             predicted_boxes = np.array(predicted_boxes)
@@ -291,7 +290,7 @@ class SORT:
             detections,predicted_boxes,self.iou_threshold)
 
         # Update matched_indices trackers
-        for t,trk in enumerate(self.trackers.values()):
+        for t,trk in enumerate(self.trackers):
             if t not in unmatched_trackers:
                 det_index = matched_indices[np.where(matched_indices[:,1] == t)[0][0],0]
                 trk.update(detections[det_index])
@@ -299,17 +298,18 @@ class SORT:
         # New trackers for unmatched detections
         for d in unmatched_detections:
             new_tracker = KalmanBoxTracker(detections[d])
-            self.trackers[new_tracker.get_id()] = new_tracker
+            self.trackers.append(new_tracker)
 
         # Filter out old trackers
-        items_list = list(self.trackers.items())
-        for id,trk in items_list:
-            if trk.get_time_since_update() >= self.max_age:
-                del self.trackers[id]
+        new_trackers = []
+        for trk in self.trackers:
+            if trk.get_time_since_update() < self.max_age:
+                new_trackers.append(trk)
+        self.trackers = new_trackers
 
         # Build output
         output = []
-        for trk in self.trackers.values():
+        for trk in self.trackers:
             if trk.get_hit_streak() >= self.min_hits or self.frame_count <= self.min_hits:
                 box = trk.get_box()
                 row = np.concatenate(([trk.get_id()],box)).reshape((1,5))
@@ -323,5 +323,5 @@ class SORT:
 
     # Reset tracker status for new sequences
     def reset(self):
-        self.trackers = {}
+        self.trackers = []
         self.frame_count = 0
