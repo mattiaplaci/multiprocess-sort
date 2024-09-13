@@ -3,7 +3,6 @@ import cv2
 import numpy as np
 import tkinter
 
-import multiprocessing as mp
 import threading
 
 import time
