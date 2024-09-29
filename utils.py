@@ -93,17 +93,10 @@ class PerformanceManager:
 
         # Process PID
         self.process = psutil.Process(os.getpid())
-        self.children = []
-        self.children_pids = []
 
         # Performances
         self.global_performance = []
         self.sequences_performance = {}
-
-
-    def add_child(self, child):
-        self.children.append(child)
-        self.children_pids.append(child.pid)
 
 
     def resources_init(self):
@@ -115,9 +108,7 @@ class PerformanceManager:
         # Memory usage
         self.mem_usage = 0.0
         self.stop_thread = False
-
-        self.mem_thread = threading.Thread(target=memory_measurement,
-                                           args=[self])
+        self.mem_thread = threading.Thread(target=memory_measurement,args=[self])
 
         # GPU usage
         nvmlInit()
@@ -131,16 +122,14 @@ class PerformanceManager:
 
     def measure_memory(self):
         mem = self.process.memory_info().rss / 1024**2
-        for p in self.children:
-            if p.is_running():
-                mem += p.memory_info().rss / 1024**2
         self.mem_usage = max(mem, self.mem_usage)
 
     def measure_gpu_memory(self):
         gpu = 0.0
         for p in nvmlDeviceGetComputeRunningProcesses(self.handle):
-            if p.pid in self.children_pids or p.pid == os.getpid():
+            if p.pid == os.getpid():
                 gpu += p.usedGpuMemory / 1024**2
+                break
         self.used_gpu_memory = max(gpu, self.used_gpu_memory)
 
     def measure_gpu_usage(self):
@@ -148,13 +137,9 @@ class PerformanceManager:
 
     def measure_cpu_usage(self):
         cpu = self.process.cpu_percent() / psutil.cpu_count()
-        for p in self.children:
-            if p.is_running():
-                cpu += p.cpu_percent() / psutil.cpu_count()
         self.cpu_usage.append(cpu)
 
     def get_resources(self):
-
         self.measure_cpu_usage()
         self.measure_gpu_usage()
     

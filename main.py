@@ -5,11 +5,10 @@ import argparse
 from sort import *
 from utils import *
 
-import multiprocessing as mp
+import queue as q
 import threading
 
 import time
-import psutil
 from pynvml import *
 
 import cProfile
@@ -29,8 +28,6 @@ def parse_arg():
                         help='Save the tracker output [False by default]')
     parser.add_argument('-set', default=None, type=str,
                         help='Dataset to use (train, test, validation, None) if None use all of the dataset [None by default]')
-    parser.add_argument('-num_producers', default=4, type=int,
-                        help='Number of processes computing detections in parallel')
     parser.add_argument('-max_age', default=1, type=int,
                         help='Maximum number of frames to keep alive a track without associated detections [1 by default]')
     parser.add_argument('-min_hits', default=3, type=int,
@@ -41,33 +38,8 @@ def parse_arg():
     return args
 
 
-# Producer routine
-def detection_producer(input_queue,output_queue):
-
-    # Load YOLOv8 detector
-    detector = YOLOv8Detector()
-
-    while True:
-
-        # Get new frame
-        frame = input_queue.get()
-        frame_id = frame.get_id()
-        if frame_id == -1:
-            break
-        image_path = frame.get_image()
-
-        # Produce detections
-        detections = detector.get_detections(image_path)
-        frame.set_detections(detections)
-
-        # Send detections
-        output_queue.put(frame)
-
-    return 0
-
-
 # Children processes coordination
-def frames_reader(seq_path,image_files,framerate,input_queue,output_queue):
+def frames_reader(seq_path,image_files,framerate,queue):
 
     frame_count = 0
 
@@ -80,24 +52,24 @@ def frames_reader(seq_path,image_files,framerate,input_queue,output_queue):
 
         frame = Frame(image_path,frame_count)
         
-        input_queue.put(frame)
+        queue.put(frame)
         
         time.sleep(1/framerate)
 
     # Tell main thread that task is done
-    stop = Frame(None,-1)
-    output_queue.put(stop)
+    queue.put(Frame(None,0))
 
 
-def main(display=False,profile=False,performance=False,save_output=False,var_set=None,num_producers=4,max_age=1,min_hits=3,iou_threshold=0.3):
+def main(display=False,profile=False,performance=False,save_output=False,var_set=None,max_age=1,min_hits=3,iou_threshold=0.3):
 
     # Configuration files reader
     config = configparser.ConfigParser()
 
+    # Load YOLOv8 detector
+    detector = YOLOv8Detector()
+
     # Create SORT tracker object
-    mot_tracker = SORT(max_age=max_age,
-                    min_hits=min_hits,
-                    iou_threshold=iou_threshold)
+    mot_tracker = SORT(max_age=max_age,min_hits=min_hits,iou_threshold=iou_threshold)
     
     # Object to show outputs
     if display:
@@ -127,20 +99,7 @@ def main(display=False,profile=False,performance=False,save_output=False,var_set
         performance_manager.resources_init()
 
     # Input and output queues
-    input_queue = mp.Queue()
-    output_queue = mp.Queue()
-
-    # Create processes
-    child_processes = []
-    for _ in range(num_producers):
-
-        p = mp.Process(target=detection_producer, args=(input_queue,output_queue))
-        p.daemon = True
-        p.start()
-        child_processes.append(p)
-
-        if performance:
-            performance_manager.add_child(psutil.Process(p.pid))
+    queue = q.Queue()
 
     # Start measurement
     if performance:
@@ -191,31 +150,22 @@ def main(display=False,profile=False,performance=False,save_output=False,var_set
                                                 args=(seq_path,
                                                         image_files,
                                                         framerate,
-                                                        input_queue,
-                                                        output_queue))
+                                                        queue))
             frames_thread.start()
-            frames_buffer = {}
 
             # Cicle through sequence's frames
             while True:
 
                 frame_count += 1
 
-                # Get frame from child processes
-                if frame_count in frames_buffer.keys():
-                    frame = frames_buffer.pop(frame_count)
-                else:
-                    frame = output_queue.get()
-                    frame_id = frame.get_id()
-                    if frame_id == -1:
-                        break
-                    while frame_id != frame_count:
-                        frames_buffer[frame_id] = frame
-                        frame = output_queue.get()
-                        frame_id = frame.get_id()
+                frame = queue.get()
+                if frame.get_id() == 0:
+                    break
+
+                detections = detector.get_detections(frame.get_image())
 
                 # Update trackers state
-                output = mot_tracker.update(frame.get_detections())
+                output = mot_tracker.update(detections)
 
                 # Measurements
                 if performance:
@@ -224,7 +174,7 @@ def main(display=False,profile=False,performance=False,save_output=False,var_set
 
                 # Display results frame by frame
                 if display:
-                    image_path = os.path.join(seq_path,image_files[frame_id-1])
+                    image_path = os.path.join(seq_path,image_files[frame_count-1])
                     displayer.update_boxes(mot_tracker.trackers)
                     displayer.show(image_path,output)
 
@@ -261,17 +211,6 @@ def main(display=False,profile=False,performance=False,save_output=False,var_set
         stats = pstats.Stats(profiler)
         stats.dump_stats('profile.prof')
 
-    # Send every child a stop signal
-    stop = Frame(None,-1)
-    for _ in range(num_producers):
-        input_queue.put(stop)
-
-    # Wait for children
-    for p in child_processes:
-        p.join()
-        if p.exitcode != 0:
-            raise ValueError(f'Child {p.pid} exited with code {p.exitcode}')
-
 
 if __name__ == '__main__':
 
@@ -285,12 +224,9 @@ if __name__ == '__main__':
     # Dataset
     var_set = args.set
 
-    # Number of children processes
-    num_producers = args.num_producers
-
     # Parameters
     max_age = args.max_age
     min_hits = args.min_hits
     iou_threshold = args.iou_threshold
 
-    main(display,profile,performance,save_output,var_set,num_producers,max_age,min_hits,iou_threshold)
+    main(display,profile,performance,save_output,var_set,max_age,min_hits,iou_threshold)
