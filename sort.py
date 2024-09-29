@@ -46,8 +46,8 @@ class YOLOv8Detector:
         return detections
 
 
-# Converts format [x1,y1,x2,y2] to [x,y,s,r]
-def convert_xyxy_to_xysr(box):
+# Converts format [x1,y1,x2,y2] to [u,v,s,r]
+def convert_xyxy_to_uvsr(box):
 
     w = box[2] - box[0]
     h = box[3] - box[1]
@@ -68,8 +68,8 @@ def convert_xyxy_to_xysr(box):
 
     return box.reshape((4,1))
 
-# Converts format [x,y,s,r] to [x1,y1,x2,y2]
-def convert_xysr_to_xyxy(state_box):
+# Converts format [u,v,s,r] to [x1,y1,x2,y2]
+def convert_uvsr_to_xyxy(state_box):
 
     box = np.copy(state_box)
     box = np.reshape(box,(4,))
@@ -116,8 +116,7 @@ class KalmanBoxTracker:
                                [0,1,0,0,0,0,0],
                                [0,0,1,0,0,0,0],
                                [0,0,0,1,0,0,0] ])
-        # initial state
-        self.kf.x[:4] = convert_xyxy_to_xysr(box)
+        
         # state covariance matrix P
         self.kf.P *= 10
         self.kf.P[4:,4:] *= 1000
@@ -126,6 +125,9 @@ class KalmanBoxTracker:
         self.kf.Q[-1,-1] *= 0.01
         # measurement noise matrix R
         self.kf.R[2:,2:] *= 10
+
+        # initial state
+        self.kf.x[:4] = convert_xyxy_to_uvsr(box)
 
         self.id = KalmanBoxTracker.count
         self.time_since_update = 0
@@ -140,7 +142,7 @@ class KalmanBoxTracker:
     def predict(self):
 
         # Handle scale (area) negative values
-        if((self.kf.x[6]+self.kf.x[2])<=0):
+        if self.kf.x[6] + self.kf.x[2] <= 0:
             self.kf.x[6] *= 0.0
 
         # Predict next frame
@@ -156,7 +158,7 @@ class KalmanBoxTracker:
     def update(self,det):
         
         # Update tracker with new detection
-        box = convert_xyxy_to_xysr(det)
+        box = convert_xyxy_to_uvsr(det)
         self.kf.update(box)
 
         self.time_since_update = 0
@@ -169,7 +171,7 @@ class KalmanBoxTracker:
         return self.kf.x
     
     def get_box(self):
-        return convert_xysr_to_xyxy(self.kf.x[:4])
+        return convert_uvsr_to_xyxy(self.kf.x[:4])
     
     def get_id(self):
         return self.id

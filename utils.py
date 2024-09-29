@@ -1,13 +1,11 @@
 import os
 import cv2
 import numpy as np
-import tkinter
 
 import threading
 
 import time
 import psutil
-import matplotlib.pyplot as plt
 from pynvml import *
 
 
@@ -39,22 +37,12 @@ class Displayer:
 
     def __init__(self):
 
-        # Screen info
-        tk = tkinter.Tk()
-        self.screen_width, self.screen_height = tk.winfo_screenwidth(), tk.winfo_screenheight()
-        self.screen_ratio = self.screen_width/self.screen_height
-
         self.trackers_color = {}
 
     def get_sequence_visualization_info(self,config):
 
         # Sequence name
         self.seq_name = config.get('Sequence','name')
-
-        # Visualization info
-        self.width = config.getint('Sequence','imWidth')
-        self.height = config.getint('Sequence','imHeight')
-        self.ratio = self.width/self.height
 
     def update_boxes(self,trackers):
         for trk in trackers:
@@ -71,15 +59,6 @@ class Displayer:
             cv2.rectangle(frame, (x1,y1), (x2,y2), color, 2)
             cv2.putText(frame, f'ID: {id}', (x1, y1-5), cv2.FONT_ITALIC, 0.6, color, 2)
 
-        # Adjust visualization in case of screen not big enough
-        if self.width > self.screen_width or self.height > self.screen_height:
-            if self.ratio > self.screen_ratio:
-                frame = cv2.resize(frame,(self.screen_width,int(self.screen_width/self.ratio)))
-            elif self.ratio < self.screen_ratio:
-                frame = cv2.resize(frame,(int(self.screen_height*self.ratio),self.screen_height))
-            else:
-                frame = cv2.resize(frame,(self.screen_width,self.screen_height))
-
         cv2.imshow(self.seq_name,frame)
         cv2.waitKey(1)
 
@@ -89,9 +68,6 @@ class Displayer:
 
     def reset(self):
         self.seq_name = ''
-        self.width = 0
-        self.height = 0
-        self.ratio = 0.0
         self.trackers_color = {}
 
 
@@ -110,12 +86,10 @@ def memory_measurement(performance_manager):
 
 class PerformanceManager:
 
-    def __init__(self,save_performance=True):
+    def __init__(self):
 
-        self.save_performance = save_performance
-
-        if self.save_performance:
-            self.performance_file = open(os.path.join('performances','performances.txt'),'w')
+        self.performance_file = open(os.path.join('performances','performances.txt'),'w')
+        self.output_file = open(os.path.join('performances','output.txt'),'w')
 
         # Process PID
         self.process = psutil.Process(os.getpid())
@@ -139,8 +113,7 @@ class PerformanceManager:
         self.process.cpu_percent()
 
         # Memory usage
-        _, self.ax = plt.subplots()
-        self.mem_usage = []
+        self.mem_usage = 0.0
         self.stop_thread = False
 
         self.mem_thread = threading.Thread(target=memory_measurement,
@@ -149,28 +122,19 @@ class PerformanceManager:
         # GPU usage
         nvmlInit()
         self.handle = nvmlDeviceGetHandleByIndex(0)
-        self.gpu_name = nvmlDeviceGetName(self.handle).decode("utf-8")
+        self.gpu_name = nvmlDeviceGetName(self.handle)
         self.used_gpu_memory = 0.0
         self.gpu_usage = []
 
         self.mem_thread.start()
 
-    def get_resources(self):
-
-        cpu = self.process.cpu_percent() / psutil.cpu_count()
-        for p in self.children:
-            if p.is_running():
-                cpu += p.cpu_percent() / psutil.cpu_count()
-        self.cpu_usage.append(cpu)
-
-        self.gpu_usage.append(nvmlDeviceGetUtilizationRates(self.handle).gpu)
 
     def measure_memory(self):
         mem = self.process.memory_info().rss / 1024**2
         for p in self.children:
             if p.is_running():
                 mem += p.memory_info().rss / 1024**2
-        self.mem_usage.append(mem)
+        self.mem_usage = max(mem, self.mem_usage)
 
     def measure_gpu_memory(self):
         gpu = 0.0
@@ -178,6 +142,21 @@ class PerformanceManager:
             if p.pid in self.children_pids or p.pid == os.getpid():
                 gpu += p.usedGpuMemory / 1024**2
         self.used_gpu_memory = max(gpu, self.used_gpu_memory)
+
+    def measure_gpu_usage(self):
+        self.gpu_usage.append(nvmlDeviceGetUtilizationRates(self.handle).gpu)
+
+    def measure_cpu_usage(self):
+        cpu = self.process.cpu_percent() / psutil.cpu_count()
+        for p in self.children:
+            if p.is_running():
+                cpu += p.cpu_percent() / psutil.cpu_count()
+        self.cpu_usage.append(cpu)
+
+    def get_resources(self):
+
+        self.measure_cpu_usage()
+        self.measure_gpu_usage()
     
 
     def new_sequence_timer(self,config):
@@ -201,25 +180,24 @@ class PerformanceManager:
 
     def end_seq_measurement(self):
         
-        if self.save_performance:
-            print(self.seq_name+
-                  '\n\tAvarage time per frame: {:.2f}'.format(self.avg_frame_time),
-                  '\n\tAvarage FPS: {:.2f}'.format(1/self.avg_frame_time),
-                  '\n\tAvarage latency: {:.2f}'.format(self.seq_latency),
-                  file=self.performance_file)
+        print(self.seq_name+
+              '\n\tAvarage time per frame: {:.2f}'.format(self.avg_frame_time),
+              '\n\tAvarage FPS: {:.2f}'.format(1/self.avg_frame_time),
+              '\n\tAvarage latency: {:.2f}'.format(self.seq_latency),
+              file=self.performance_file)
         
         self.sequences_performance[self.seq_name] = []
         self.sequences_performance[self.seq_name].append(self.avg_frame_time)
         self.sequences_performance[self.seq_name].append(1/self.avg_frame_time)
         self.sequences_performance[self.seq_name].append(self.seq_latency)
-            
-        
-
+    
+    
     def latency_timer(self,start):
         end = time.time()
         latency = end-start
         self.avg_latency += latency
         self.seq_latency += latency
+
 
     def start_global_measurement(self):
         # Timer
@@ -240,45 +218,35 @@ class PerformanceManager:
 
         self.mem_thread.join()
 
-        if self.save_performance:
-
-            print('\nGlobal avarage time per frame: {:.2f}'.format(self.global_avg_frame_time),
-                  file=self.performance_file)
-            print('Global avarage FPS: {:.2f}'.format(1/self.global_avg_frame_time),
-                  file=self.performance_file)
-            print('Global avarage latency: {:.2f}'.format(self.avg_latency),
-                  file=self.performance_file)
-            print('Total time: {:.2f}'.format(end_time-self.start_time),
-                  file=self.performance_file)
-            print('\n\nAvarage CPU usage: {:.2f}%'.format(np.array(self.cpu_usage).mean()),
-                  file=self.performance_file)
-            print('\nAvarage memory usage: {:.2f} MiB'.format(np.array(self.mem_usage).mean()),
-                  file=self.performance_file)
-            print('\nGPU -',self.gpu_name+':',
-                  file=self.performance_file)
-            print('\tAvarage GPU usage: {:.2f}%'.format(np.array(self.gpu_usage).mean()),
-                  file=self.performance_file)
-            print('\tGPU memory used: {:.2f} MiB'.format(self.used_gpu_memory),
-                  file=self.performance_file)
-            self.performance_file.close()
-
-            self.ax.clear()
-            self.ax.plot(self.mem_usage, label='Utilizzo memoria (MiB)')
-            self.ax.set_title('Monitoraggio utilizzo memoria utilizzata in tempo reale')
-            self.ax.set_xlabel('Time (s)')
-            self.ax.set_ylabel('Utilizzo memoria (MiB)')
-            self.ax.legend(loc='lower right')
-            plt.savefig(os.path.join('performances','memory_plot.png'))
+        print('\nGlobal avarage time per frame: {:.2f}'.format(self.global_avg_frame_time),
+              file=self.performance_file)
+        print('Global avarage FPS: {:.2f}'.format(1/self.global_avg_frame_time),
+              file=self.performance_file)
+        print('Global avarage latency: {:.2f}'.format(self.avg_latency),
+              file=self.performance_file)
+        print('Total time: {:.2f}'.format(end_time-self.start_time),
+              file=self.performance_file)
+        print('\n\nAvarage CPU usage: {:.2f}%'.format(np.array(self.cpu_usage).mean()),
+              file=self.performance_file)
+        print('\nPeak memory usage: {:.2f} MiB'.format(self.mem_usage),
+              file=self.performance_file)
+        print('\nGPU -',self.gpu_name+':',
+              file=self.performance_file)
+        print('\tAvarage GPU usage: {:.2f}%'.format(np.array(self.gpu_usage).mean()),
+              file=self.performance_file)
+        print('\tPeak GPU memory usage: {:.2f} MiB'.format(self.used_gpu_memory),
+              file=self.performance_file)
+        self.performance_file.close()
 
         self.global_performance.append(self.global_avg_frame_time)
         self.global_performance.append(1/self.global_avg_frame_time)
         self.global_performance.append(self.avg_latency)
         self.global_performance.append(end_time-self.start_time)
         self.global_performance.append(np.array(self.cpu_usage).mean())
-        self.global_performance.append(np.array(self.mem_usage).mean())
+        self.global_performance.append(self.mem_usage)
         self.global_performance.append(np.array(self.gpu_usage).mean())
         self.global_performance.append(self.used_gpu_memory)
 
-        return (self.global_performance, self.sequences_performance)
+        print(self.global_performance,file=self.output_file)
 
         
