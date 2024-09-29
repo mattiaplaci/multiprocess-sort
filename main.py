@@ -293,6 +293,4 @@ if __name__ == '__main__':
     min_hits = args.min_hits
     iou_threshold = args.iou_threshold
 
-    #mp.set_start_method('spawn')
-
     main(display,profile,performance,save_output,var_set,num_producers,max_age,min_hits,iou_threshold)
