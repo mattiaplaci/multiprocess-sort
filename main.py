@@ -27,6 +27,8 @@ def parse_arg():
                         help='Enable performance measurement [False by default]')
     parser.add_argument('--save_output', dest='save_output', action='store_true',
                         help='Save the tracker output [False by default]')
+    parser.add_argument('--disable_realtime', dest='realtime', action='store_false',
+                        help='Disable realtime FPS [Enabled by default]')
     parser.add_argument('-set', default=None, type=str,
                         help='Dataset to use (train, test, validation, None) if None use all of the dataset [None by default]')
     parser.add_argument('-num_producers', default=4, type=int,
@@ -42,7 +44,7 @@ def parse_arg():
 
 
 # Producer routine
-def detection_producer(input_queue,output_queue):
+def detection_producer(input_queue,output_queue,stop_queue,semaphore):
 
     # Load YOLOv8 detector
     detector = YOLOv8Detector()
@@ -52,6 +54,10 @@ def detection_producer(input_queue,output_queue):
         # Get new frame
         frame = input_queue.get()
         frame_id = frame.get_id()
+        if frame_id == 0:
+            stop_queue.put(Frame(None,0))
+            semaphore.acquire()
+            continue
         if frame_id == -1:
             break
         image_path = frame.get_image()
@@ -67,7 +73,7 @@ def detection_producer(input_queue,output_queue):
 
 
 # Children processes coordination
-def frames_reader(seq_path,image_files,framerate,input_queue,output_queue):
+def frames_reader(seq_path,image_files,realtime,framerate,num_producers,input_queue,output_queue,stop_queue,semaphores):
 
     frame_count = 0
 
@@ -82,14 +88,23 @@ def frames_reader(seq_path,image_files,framerate,input_queue,output_queue):
         
         input_queue.put(frame)
         
-        time.sleep(1/framerate)
+        if realtime:
+            time.sleep(1/framerate)
+
+    for _ in range(num_producers):
+        input_queue.put(Frame(None,0))
+
+    for _ in range(num_producers):
+        stop_queue.get()
+
+    for i in range(num_producers):
+        semaphores[i].release()
 
     # Tell main thread that task is done
-    stop = Frame(None,-1)
-    output_queue.put(stop)
+    output_queue.put(Frame(None,-1))
 
 
-def main(display=False,profile=False,performance=False,save_output=False,var_set=None,num_producers=4,max_age=1,min_hits=3,iou_threshold=0.3):
+def main(display=False,profile=False,performance=False,save_output=False,realtime=True,var_set=None,num_producers=4,max_age=1,min_hits=3,iou_threshold=0.3):
 
     # Configuration files reader
     config = configparser.ConfigParser()
@@ -129,12 +144,14 @@ def main(display=False,profile=False,performance=False,save_output=False,var_set
     # Input and output queues
     input_queue = mp.Queue()
     output_queue = mp.Queue()
+    stop_queue = mp.Queue()
+    semaphores = [mp.Semaphore(0) for _ in range(num_producers)]
 
     # Create processes
     child_processes = []
-    for _ in range(num_producers):
+    for i in range(num_producers):
 
-        p = mp.Process(target=detection_producer, args=(input_queue,output_queue))
+        p = mp.Process(target=detection_producer, args=(input_queue,output_queue,stop_queue,semaphores[i]))
         p.daemon = True
         p.start()
         child_processes.append(p)
@@ -190,9 +207,13 @@ def main(display=False,profile=False,performance=False,save_output=False,var_set
             frames_thread = threading.Thread(target=frames_reader,
                                                 args=(seq_path,
                                                         image_files,
+                                                        realtime,
                                                         framerate,
+                                                        num_producers,
                                                         input_queue,
-                                                        output_queue))
+                                                        output_queue,
+                                                        stop_queue,
+                                                        semaphores))
             frames_thread.start()
             frames_buffer = {}
 
@@ -207,12 +228,13 @@ def main(display=False,profile=False,performance=False,save_output=False,var_set
                 else:
                     frame = output_queue.get()
                     frame_id = frame.get_id()
-                    if frame_id == -1:
-                        break
-                    while frame_id != frame_count:
+                    while frame_id != frame_count and frame_id != -1:
                         frames_buffer[frame_id] = frame
                         frame = output_queue.get()
                         frame_id = frame.get_id()
+
+                if frame_id == -1:
+                    break
 
                 # Update trackers state
                 output = mot_tracker.update(frame.get_detections())
@@ -281,6 +303,7 @@ if __name__ == '__main__':
     profile = args.profile
     performance = args.performance
     save_output = args.save_output
+    realtime = args.realtime
 
     # Dataset
     var_set = args.set
@@ -293,4 +316,4 @@ if __name__ == '__main__':
     min_hits = args.min_hits
     iou_threshold = args.iou_threshold
 
-    main(display,profile,performance,save_output,var_set,num_producers,max_age,min_hits,iou_threshold)
+    main(display,profile,performance,save_output,realtime,var_set,num_producers,max_age,min_hits,iou_threshold)

@@ -20,7 +20,7 @@ class YOLOv8Detector:
             print('\nWarning: GPU not available\nUsing CPU instead...\n')
 
         # Pretrained YOLOv8 model
-        self.model = YOLO('yolov8x.pt').to(self.device)
+        self.model = YOLO('yolov8n.pt').to(self.device)
 
         # Detector parameters
         self.score_threshold = score_threshold
