@@ -203,21 +203,21 @@ class PerformanceManager:
 
         self.mem_thread.join()
 
-        print('\nGlobal avarage time per frame: {:.2f}'.format(self.global_avg_frame_time),
+        print('\nGlobal average time per frame: {:.2f}'.format(self.global_avg_frame_time),
               file=self.performance_file)
-        print('Global avarage FPS: {:.2f}'.format(1/self.global_avg_frame_time),
+        print('Global average FPS: {:.2f}'.format(1/self.global_avg_frame_time),
               file=self.performance_file)
-        print('Global avarage latency: {:.2f}'.format(self.avg_latency),
+        print('Global average latency: {:.2f}'.format(self.avg_latency),
               file=self.performance_file)
         print('Total time: {:.2f}'.format(end_time-self.start_time),
               file=self.performance_file)
-        print('\n\nAvarage CPU usage: {:.2f}%'.format(np.array(self.cpu_usage).mean()),
+        print('\n\nAverage CPU usage: {:.2f}%'.format(np.array(self.cpu_usage).mean()),
               file=self.performance_file)
         print('\nPeak memory usage: {:.2f} MiB'.format(self.mem_usage),
               file=self.performance_file)
         print('\nGPU -',self.gpu_name+':',
               file=self.performance_file)
-        print('\tAvarage GPU usage: {:.2f}%'.format(np.array(self.gpu_usage).mean()),
+        print('\tAverage GPU usage: {:.2f}%'.format(np.array(self.gpu_usage).mean()),
               file=self.performance_file)
         print('\tPeak GPU memory usage: {:.2f} MiB'.format(self.used_gpu_memory),
               file=self.performance_file)
