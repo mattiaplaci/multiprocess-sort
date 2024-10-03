@@ -27,8 +27,8 @@ def parse_arg():
                         help='Enable performance measurement [False by default]')
     parser.add_argument('--save_output', dest='save_output', action='store_true',
                         help='Save the tracker output [False by default]')
-    parser.add_argument('--disable_realtime', dest='realtime', action='store_false',
-                        help='Disable realtime FPS [Enabled by default]')
+    parser.add_argument('--realtime', dest='realtime', action='store_true',
+                        help='Enable realtime simulation [Disabled by default]')
     parser.add_argument('-set', default=None, type=str,
                         help='Dataset to use (train, test, validation, None) if None use all of the dataset [None by default]')
     parser.add_argument('-num_producers', default=4, type=int,
@@ -89,6 +89,8 @@ def frames_reader(seq_path,image_files,realtime,framerate,num_producers,input_qu
         input_queue.put(frame)
         
         if realtime:
+            time.sleep(1/30)
+        else:
             time.sleep(1/framerate)
 
     for _ in range(num_producers):
@@ -104,7 +106,7 @@ def frames_reader(seq_path,image_files,realtime,framerate,num_producers,input_qu
     output_queue.put(Frame(None,-1))
 
 
-def main(display=False,profile=False,performance=False,save_output=False,realtime=True,var_set=None,num_producers=4,max_age=1,min_hits=3,iou_threshold=0.3):
+def main(display=False,profile=False,performance=False,save_output=False,realtime=False,var_set=None,num_producers=4,max_age=1,min_hits=3,iou_threshold=0.3):
 
     # Configuration files reader
     config = configparser.ConfigParser()

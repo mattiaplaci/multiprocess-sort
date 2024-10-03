@@ -1,5 +1,4 @@
 import numpy as np
-import torch
 
 from ultralytics import YOLO
 
@@ -12,15 +11,8 @@ class YOLOv8Detector:
 
     def __init__(self,score_threshold=0.5):
 
-        # Use gpu if available
-        if torch.cuda.is_available():
-            self.device = torch.device('cuda')
-        else:
-            self.device = torch.device('cpu')
-            print('\nWarning: GPU not available\nUsing CPU instead...\n')
-
         # Pretrained YOLOv8 model
-        self.model = YOLO('yolov8n.pt').to(self.device)
+        self.model = YOLO('yolov8n.pt')
 
         # Detector parameters
         self.score_threshold = score_threshold
