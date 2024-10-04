@@ -92,6 +92,8 @@ class KalmanBoxTracker:
 
     def __init__(self,box):
 
+        KalmanBoxTracker.count += 1
+
         self.kf = KalmanFilter(dim_x=7,dim_z=4)
 
         # Costant velocity model:
@@ -127,9 +129,6 @@ class KalmanBoxTracker:
 
         # Assign random color to tracker
         self.color = (np.random.randint(0,256),np.random.randint(0,256),np.random.randint(0,256))
-
-        KalmanBoxTracker.count += 1
-
 
     def predict(self):
 
