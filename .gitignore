@@ -8,3 +8,4 @@ results
 evaluation.py
 hyperparameters_tuning.py
 performance_tuning.py
+yolov8x.pt

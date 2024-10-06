@@ -69,11 +69,9 @@ def detection_producer(input_queue,output_queue,stop_queue,semaphore):
         # Send detections
         output_queue.put(frame)
 
-    return 0
-
 
 # Children processes coordination
-def frames_reader(seq_path,image_files,realtime,framerate,num_producers,input_queue,output_queue,stop_queue,semaphores):
+def frames_reader(seq_path,image_files,framerate,num_producers,input_queue,output_queue,stop_queue,semaphores):
 
     frame_count = 0
 
@@ -88,10 +86,7 @@ def frames_reader(seq_path,image_files,realtime,framerate,num_producers,input_qu
         
         input_queue.put(frame)
         
-        if realtime:
-            time.sleep(1/30)
-        else:
-            time.sleep(1/framerate)
+        time.sleep(1/framerate)
 
     for _ in range(num_producers):
         input_queue.put(Frame(None,0))
@@ -106,7 +101,7 @@ def frames_reader(seq_path,image_files,realtime,framerate,num_producers,input_qu
     output_queue.put(Frame(None,-1))
 
 
-def main(display=False,profile=False,performance=False,save_output=False,realtime=False,var_set=None,num_producers=4,max_age=1,min_hits=3,iou_threshold=0.3):
+def main(display=False,profile=False,performance=False,save_output=False,var_set=None,num_producers=4,max_age=1,min_hits=3,iou_threshold=0.3):
 
     # Configuration files reader
     config = configparser.ConfigParser()
@@ -154,7 +149,6 @@ def main(display=False,profile=False,performance=False,save_output=False,realtim
     for i in range(num_producers):
 
         p = mp.Process(target=detection_producer, args=(input_queue,output_queue,stop_queue,semaphores[i]))
-        p.daemon = True
         p.start()
         child_processes.append(p)
 
@@ -209,7 +203,6 @@ def main(display=False,profile=False,performance=False,save_output=False,realtim
             frames_thread = threading.Thread(target=frames_reader,
                                                 args=(seq_path,
                                                         image_files,
-                                                        realtime,
                                                         framerate,
                                                         num_producers,
                                                         input_queue,
@@ -234,9 +227,8 @@ def main(display=False,profile=False,performance=False,save_output=False,realtim
                         frames_buffer[frame_id] = frame
                         frame = output_queue.get()
                         frame_id = frame.get_id()
-
-                if frame_id == -1:
-                    break
+                    if frame_id == -1:
+                        break
 
                 # Update trackers state
                 output = mot_tracker.update(frame.get_detections())
@@ -305,7 +297,6 @@ if __name__ == '__main__':
     profile = args.profile
     performance = args.performance
     save_output = args.save_output
-    realtime = args.realtime
 
     # Dataset
     var_set = args.set
@@ -318,4 +309,4 @@ if __name__ == '__main__':
     min_hits = args.min_hits
     iou_threshold = args.iou_threshold
 
-    main(display,profile,performance,save_output,realtime,var_set,num_producers,max_age,min_hits,iou_threshold)
+    main(display,profile,performance,save_output,var_set,num_producers,max_age,min_hits,iou_threshold)

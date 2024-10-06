@@ -12,7 +12,7 @@ class YOLOv8Detector:
     def __init__(self,score_threshold=0.5):
 
         # Pretrained YOLOv8 model
-        self.model = YOLO('yolov8n.pt')
+        self.model = YOLO('yolov8x.pt')
 
         # Detector parameters
         self.score_threshold = score_threshold
