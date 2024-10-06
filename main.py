@@ -26,8 +26,6 @@ def parse_arg():
                         help='Enable performance measurement [False by default]')
     parser.add_argument('--save_output', dest='save_output', action='store_true',
                         help='Save the tracker output [False by default]')
-    parser.add_argument('--realtime', dest='realtime', action='store_true',
-                        help='Enable realtime simulation [Disabled by default]')
     parser.add_argument('-set', default=None, type=str,
                         help='Dataset to use (train, test, validation, None) if None use all of the dataset [None by default]')
     parser.add_argument('-max_age', default=1, type=int,
@@ -62,7 +60,7 @@ def frames_reader(seq_path,image_files,framerate,queue):
     queue.put(Frame(None,0))
 
 
-def main(display=False,profile=False,performance=False,save_output=False,realtime=False,var_set=None,max_age=1,min_hits=3,iou_threshold=0.3):
+def main(display=False,profile=False,performance=False,save_output=False,var_set=None,max_age=1,min_hits=3,iou_threshold=0.3):
 
     # Configuration files reader
     config = configparser.ConfigParser()
@@ -215,7 +213,7 @@ def main(display=False,profile=False,performance=False,save_output=False,realtim
     if profile:
         profiler.disable()
         stats = pstats.Stats(profiler)
-        stats.dump_stats('profile.prof')
+        stats.dump_stats('profiling/profile.prof')
 
 
 if __name__ == '__main__':
@@ -226,7 +224,6 @@ if __name__ == '__main__':
     profile = args.profile
     performance = args.performance
     save_output = args.save_output
-    realtime = args.realtime
 
     # Dataset
     var_set = args.set
@@ -236,4 +233,4 @@ if __name__ == '__main__':
     min_hits = args.min_hits
     iou_threshold = args.iou_threshold
 
-    main(display,profile,performance,save_output,realtime,var_set,max_age,min_hits,iou_threshold)
+    main(display,profile,performance,save_output,var_set,max_age,min_hits,iou_threshold)
