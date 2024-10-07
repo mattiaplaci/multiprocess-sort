@@ -136,7 +136,6 @@ def main(display=False,profile=False,performance=False,save_output=False,var_set
     # Performance metrics
     if performance:
         performance_manager = PerformanceManager()
-        performance_manager.resources_init()
 
     # Input and output queues
     input_queue = mp.Queue()
@@ -167,6 +166,9 @@ def main(display=False,profile=False,performance=False,save_output=False,var_set
     # Cicle through the sequences
     for path in paths:
         for seq in os.listdir(path):
+
+            if performance and (seq == 'AVG-TownCentre' or seq == 'PETS09-S2L1' or seq == 'PETS09-S2L2'):
+                continue
 
             print(seq+': ','Processing...')
 
@@ -236,7 +238,6 @@ def main(display=False,profile=False,performance=False,save_output=False,var_set
                 # Measurements
                 if performance:
                     performance_manager.latency_timer(frame.get_timestamp())
-                    performance_manager.get_resources()
 
                 # Display results frame by frame
                 if display:

@@ -78,8 +78,7 @@ def memory_measurement(performance_manager):
         if performance_manager.stop_thread:
             break
 
-        performance_manager.measure_memory()
-        performance_manager.measure_gpu_memory()
+        performance_manager.get_resources()
 
         time.sleep(1)
 
@@ -156,7 +155,9 @@ class PerformanceManager:
     def get_resources(self):
 
         self.measure_cpu_usage()
+        self.measure_memory()
         self.measure_gpu_usage()
+        self.measure_gpu_memory()
     
 
     def new_sequence_timer(self,config):
@@ -164,7 +165,7 @@ class PerformanceManager:
         self.tot_frames = config.getint('Sequence','seqLength')
         self.seq_latency = 0.0
         self.avg_frame_time = 0.0
-        self.seq_start_time = -1
+        self.seq_start_time = 0.0
 
     def start_sequence_timer(self):
         self.seq_start_time = time.time()
@@ -200,6 +201,9 @@ class PerformanceManager:
 
 
     def start_global_measurement(self):
+        
+        self.resources_init()
+        
         # Timer
         self.global_frame_count = 0
         self.global_avg_frame_time = 0.0
@@ -248,5 +252,6 @@ class PerformanceManager:
         self.global_performance.append(self.used_gpu_memory)
 
         print(self.global_performance,file=self.output_file)
+        self.output_file.close()
 
         
