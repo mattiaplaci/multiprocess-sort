@@ -127,37 +127,27 @@ class PerformanceManager:
 
         self.mem_thread.start()
 
+    def get_resources(self):
 
-    def measure_memory(self):
-        mem = self.process.memory_info().rss / 1024**2
-        for p in self.children:
-            if p.is_running():
-                mem += p.memory_info().rss / 1024**2
-        self.mem_usage = max(mem, self.mem_usage)
-
-    def measure_gpu_memory(self):
-        gpu = 0.0
-        for p in nvmlDeviceGetComputeRunningProcesses(self.handle):
-            if p.pid in self.children_pids or p.pid == os.getpid():
-                gpu += p.usedGpuMemory / 1024**2
-        self.used_gpu_memory = max(gpu, self.used_gpu_memory)
-
-    def measure_gpu_usage(self):
-        self.gpu_usage.append(nvmlDeviceGetUtilizationRates(self.handle).gpu)
-
-    def measure_cpu_usage(self):
         cpu = self.process.cpu_percent() / psutil.cpu_count()
         for p in self.children:
             if p.is_running():
                 cpu += p.cpu_percent() / psutil.cpu_count()
         self.cpu_usage.append(cpu)
 
-    def get_resources(self):
+        mem = self.process.memory_info().rss / 1024**2
+        for p in self.children:
+            if p.is_running():
+                mem += p.memory_info().rss / 1024**2
+        self.mem_usage = max(mem, self.mem_usage)
 
-        self.measure_cpu_usage()
-        self.measure_memory()
-        self.measure_gpu_usage()
-        self.measure_gpu_memory()
+        self.gpu_usage.append(nvmlDeviceGetUtilizationRates(self.handle).gpu)
+
+        gpu = 0.0
+        for p in nvmlDeviceGetComputeRunningProcesses(self.handle):
+            if p.pid in self.children_pids or p.pid == os.getpid():
+                gpu += p.usedGpuMemory / 1024**2
+        self.used_gpu_memory = max(gpu, self.used_gpu_memory)
     
 
     def new_sequence_timer(self,config):
@@ -218,9 +208,8 @@ class PerformanceManager:
         self.global_avg_frame_time /= self.global_frame_count
         self.avg_latency /= self.global_frame_count
 
-        nvmlShutdown()
-
         self.mem_thread.join()
+        nvmlShutdown()
 
         print('\nGlobal average time per frame: {:.2f}'.format(self.global_avg_frame_time),
               file=self.performance_file)

@@ -27,8 +27,6 @@ def parse_arg():
                         help='Enable performance measurement [False by default]')
     parser.add_argument('--save_output', dest='save_output', action='store_true',
                         help='Save the tracker output [False by default]')
-    parser.add_argument('--realtime', dest='realtime', action='store_true',
-                        help='Enable realtime simulation [Disabled by default]')
     parser.add_argument('-set', default=None, type=str,
                         help='Dataset to use (train, test, validation, None) if None use all of the dataset [None by default]')
     parser.add_argument('-num_producers', default=4, type=int,
@@ -167,9 +165,6 @@ def main(display=False,profile=False,performance=False,save_output=False,var_set
     for path in paths:
         for seq in os.listdir(path):
 
-            if performance and (seq == 'AVG-TownCentre' or seq == 'PETS09-S2L1' or seq == 'PETS09-S2L2'):
-                continue
-
             print(seq+': ','Processing...')
 
             # Sequence data path
@@ -249,7 +244,7 @@ def main(display=False,profile=False,performance=False,save_output=False,var_set
                 if save_output:
                     for o in output:
                         id, x1, y1, x2, y2 = int(o[0]), o[1], o[2], o[3], o[4]
-                        print('%d,%d,%.2f,%.2f,%.2f,%.2f,1,-1,-1,-1'%(
+                        print('%d, %d, %.2f, %.2f, %.2f, %.2f, 1, -1, -1, -1'%(
                             frame_count,id,x1,y1,x2-x1,y2-y1), file=output_file)
 
             # Stop measurements
