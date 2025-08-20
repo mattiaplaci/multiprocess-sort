@@ -27,15 +27,15 @@ def parse_arg():
                         help='Enable performance measurement [False by default]')
     parser.add_argument('--save_output', dest='save_output', action='store_true',
                         help='Save the tracker output [False by default]')
-    parser.add_argument('-set', default=None, type=str,
+    parser.add_argument('--set', default=None, type=str,
                         help='Dataset to use (train, test, validation, None) if None use all of the dataset [None by default]')
-    parser.add_argument('-num_producers', default=4, type=int,
+    parser.add_argument('--num_producers', default=4, type=int,
                         help='Number of processes computing detections in parallel')
-    parser.add_argument('-max_age', default=1, type=int,
+    parser.add_argument('--max_age', default=1, type=int,
                         help='Maximum number of frames to keep alive a track without associated detections [1 by default]')
-    parser.add_argument('-min_hits', default=3, type=int,
+    parser.add_argument('--min_hits', default=3, type=int,
                         help='Minimum number of associated detections before track is initialised [3 by default]')
-    parser.add_argument('-iou_threshold', default=0.3, type=float,
+    parser.add_argument('--iou_threshold', default=0.3, type=float,
                         help='Minimum IOU for match [0.3 by default]')
     args = parser.parse_args()
     return args
